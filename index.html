@@ -375,7 +375,7 @@ h3{font-size:16px;font-weight:600;margin:22px 0 8px}
               <div id="src-gs" class="srcbox">
                 <div class="gsrow"><input type="url" id="gsUrl" placeholder="https://docs.google.com/spreadsheets/d/..." aria-label="구글시트 링크"><button type="button" class="btn sm primary" id="gsLoad">불러오기</button></div>
                 <div class="fm" id="gsMsg"></div>
-                <div class="notice"><b>구글시트 바로 읽기는 Google 로그인 후 사용할 수 있어요.</b> [불러오기]를 누르면 Google 로그인 창이 열립니다. 로그인한 계정에 매출시트 보기 권한이 있어야 하고, 처음 한 번은 '시트 보기 허용'을 눌러 주세요. 시트는 읽기만 하고 수정하지 않습니다. 권한이 없다면 <button type="button" class="linkbtn" data-src="xl">엑셀 파일 올리기</button>를 이용하세요.</div>
+                <div class="notice" id="gsNotice"><b>구글시트 바로 읽기는 Google 로그인 후 사용할 수 있어요.</b> [불러오기]를 누르면 Google 로그인 창이 열립니다. 로그인한 계정에 매출시트 보기 권한이 있어야 하고, 처음 한 번은 '시트 보기 허용'을 눌러 주세요. 시트는 읽기만 하고 수정하지 않습니다. 권한이 없다면 <button type="button" class="linkbtn" data-src="xl">엑셀 파일 올리기</button>를 이용하세요.</div>
               </div>
               <div id="src-xl" class="srcbox" hidden>
                 <div class="gsrow"><div style="min-width:0;flex:1"><div class="fn" id="fn-sales">아직 선택 안 함</div><div class="fm" id="fm-sales">구글시트에서 <b>파일 → 다운로드 → Microsoft Excel(.xlsx)</b>로 받은 파일을 고르거나 이 줄에 끌어다 놓으세요</div></div><label class="btn sm pick" for="f-sales">파일 선택</label><input type="file" id="f-sales" accept=".xlsx,.xls" hidden data-slot="sales"></div>
@@ -1118,7 +1118,7 @@ async function gsLoad(){
     const vj=await vr.json(); const grids={};
     vj.valueRanges.forEach((r,k)=>{grids[tabs[k]]=r.values||[]});
     FILES.gs={id,title:mj.properties.title,grids}; S.salesSrc="gs";
-    m.innerHTML=`${tag("ok","불러옴")} ${esc(mj.properties.title)} · 일별 탭 ${tabs.length}개`;
+    m.innerHTML=`${tag("ok","불러옴")} ${esc(mj.properties.title)} · 일별 탭 ${tabs.length}개`; const gn=document.getElementById("gsNotice"); if(gn) gn.hidden=true;
   }catch(er){const k=er.message;
     m.innerHTML=tag("err","확인 필요")+" "+(k==="NO_ACCESS"?"로그인한 Google 계정에 이 시트를 볼 권한이 없어요.":k==="NO_DAYS"?"이 시트에서 '1일'~'31일' 탭을 찾지 못했어요.":k==="denied"||k==="access_denied"||k==="popup_closed"?"Google 로그인이 취소됐어요.":k==="load"?"Google 로그인 도구를 불러오지 못했어요. 이 페이지가 등록된 웹 주소에서 열렸는지 확인해 주세요.":"시트를 읽지 못했어요. ("+esc(k)+")");}
 }
