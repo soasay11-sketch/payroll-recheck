@@ -1,0 +1,1132 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>급여정산 리체크</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 레이아웃: 관리자 화면. 왼쪽 고정 메뉴(지점·메뉴) + 상단 바(경로·정산월·상태) + 본문(건수 카드 → 필터 → 트레이너별로 묶인 표). 행을 누르면 오른쪽 상세 창 */
+:root{
+  --bg:#ffffff; --side:#f7f6f3; --panel:#fbfbfa; --hover:rgba(55,53,47,.06); --active:rgba(55,53,47,.09); --line:rgba(55,53,47,.13); --line2:rgba(55,53,47,.09);
+  --fg:#37352f; --muted:rgba(55,53,47,.62); --faint:rgba(55,53,47,.42);
+  --blue:#2383e2; --blue-soft:rgba(35,131,226,.1); --on-blue:#ffffff;
+  --red-bg:#ffe2dd; --red-fg:#5d1715; --red:#e03e3e;
+  --yel-bg:#fdecc8; --yel-fg:#402c1b; --yel:#d9730d;
+  --grn-bg:#dbeddb; --grn-fg:#1c3829; --grn:#448361;
+  --gry-bg:#e3e2e0; --gry-fg:#32302c;
+  --shadow:0 0 0 1px rgba(15,15,15,.05),0 3px 6px rgba(15,15,15,.1),0 9px 24px rgba(15,15,15,.2);
+  --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",Helvetica,Arial,sans-serif;
+  --mono:"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#191919; --side:#202020; --panel:#1e1e1e; --hover:rgba(255,255,255,.055); --active:rgba(255,255,255,.09); --line:rgba(255,255,255,.13); --line2:rgba(255,255,255,.09);
+  --fg:rgba(255,255,255,.86); --muted:rgba(255,255,255,.55); --faint:rgba(255,255,255,.38);
+  --blue:#529cca; --blue-soft:rgba(82,156,202,.18); --on-blue:#ffffff;
+  --red-bg:#522e2a; --red-fg:#ffdcd6; --red:#ff7369;
+  --yel-bg:#5c3b23; --yel-fg:#fde3c4; --yel:#ffa344;
+  --grn-bg:#2b593f; --grn-fg:#d3f0dc; --grn:#4dab9a;
+  --gry-bg:#373737; --gry-fg:#e6e6e6;
+  --shadow:0 0 0 1px rgba(255,255,255,.08),0 3px 6px rgba(0,0,0,.4),0 9px 24px rgba(0,0,0,.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#191919; --side:#202020; --panel:#1e1e1e; --hover:rgba(255,255,255,.055); --active:rgba(255,255,255,.09); --line:rgba(255,255,255,.13); --line2:rgba(255,255,255,.09);
+  --fg:rgba(255,255,255,.86); --muted:rgba(255,255,255,.55); --faint:rgba(255,255,255,.38);
+  --blue:#529cca; --blue-soft:rgba(82,156,202,.18); --on-blue:#ffffff;
+  --red-bg:#522e2a; --red-fg:#ffdcd6; --red:#ff7369;
+  --yel-bg:#5c3b23; --yel-fg:#fde3c4; --yel:#ffa344;
+  --grn-bg:#2b593f; --grn-fg:#d3f0dc; --grn:#4dab9a;
+  --gry-bg:#373737; --gry-fg:#e6e6e6;
+  --shadow:0 0 0 1px rgba(255,255,255,.08),0 3px 6px rgba(0,0,0,.4),0 9px 24px rgba(0,0,0,.5); color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--blue);outline-offset:1px;border-radius:4px}
+.muted{color:var(--muted)}
+p{margin:4px 0}
+
+.app{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100%}
+
+/* 왼쪽 메뉴 */
+.nav{background:var(--side);border-right:1px solid var(--line2);position:sticky;top:0;height:100vh;height:100dvh;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top,0px)) 8px calc(12px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));overflow-y:auto}
+.ws{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;margin-bottom:6px}
+.ws .logo{width:24px;height:24px;border-radius:5px;background:var(--fg);color:var(--bg);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.ws b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.branchsel{margin:0 0 14px;padding:0 4px}
+.branchsel label{display:block;font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.04em;padding:0 4px 4px}
+.branchsel select{width:100%;font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.ngrp{font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.04em;padding:12px 12px 4px}
+.nitem{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;text-align:left;padding:6px 12px;border-radius:5px;color:var(--muted);cursor:pointer;font-size:14px}
+.nitem svg{width:16px;height:16px;flex:none}
+.nitem:hover{background:var(--hover)}
+.nitem[aria-current=page]{background:var(--active);color:var(--fg);font-weight:600}
+.nitem .cnt{margin-left:auto}
+.nitem:disabled{opacity:.55;cursor:default}
+.nitem:disabled:hover{background:none}
+.navfoot{margin-top:auto;padding:12px 8px 0;font-size:12px;color:var(--faint);display:flex;flex-direction:column;gap:6px}
+
+/* 상단 바 + 본문 */
+.main{min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line2);display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding-block:calc(10px + env(safe-area-inset-top,0px)) 10px;padding-left:24px;padding-right:max(24px,env(safe-area-inset-right,0px))}
+.iconbtn.menu{display:none}
+.crumb{font-size:14px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.crumb b{color:var(--fg);font-weight:600}
+.tright{margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.tright select{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+.content{padding-block:22px 80px;padding-left:24px;padding-right:max(24px,env(safe-area-inset-right,0px));max-width:1240px;width:100%}
+h1{font-size:24px;font-weight:700;margin:0 0 4px;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:0 0 18px}
+h3{font-size:16px;font-weight:600;margin:22px 0 8px}
+
+.tag{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:4px;font-size:12.5px;font-weight:500;white-space:nowrap;line-height:1}
+.tag::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.7}
+.tag.plain::before{display:none}
+.tag.err{background:var(--red-bg);color:var(--red-fg)} .tag.warn{background:var(--yel-bg);color:var(--yel-fg)} .tag.ok{background:var(--grn-bg);color:var(--grn-fg)} .tag.gray{background:var(--gry-bg);color:var(--gry-fg)}
+.tag.err::before{background:var(--red);opacity:1} .tag.warn::before{background:var(--yel);opacity:1} .tag.ok::before{background:var(--grn);opacity:1}
+
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--line);background:var(--bg);font-size:14px;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:var(--on-blue);font-weight:500}
+.btn.primary:hover{filter:brightness(.95)}
+.btn.ghost{border-color:transparent;color:var(--muted)}
+.btn.sm{height:26px;padding:0 9px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.callout{display:flex;gap:10px;padding:12px 14px;border-radius:6px;background:var(--side);margin:8px 0}
+.callout.bad{background:var(--red-bg);color:var(--red-fg)}
+.callout .ci{font-size:18px;line-height:1.2;flex:none}
+
+/* 건수 카드 */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.kpi{border:1px solid var(--line2);border-radius:8px;padding:14px 16px;background:var(--bg);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:8px}
+.kpi:hover{background:var(--panel)}
+.kpi[aria-pressed=true]{border-color:var(--fg);box-shadow:inset 0 0 0 1px var(--fg)}
+.kpi .tag{align-self:flex-start}
+.kpi .n{font-size:28px;font-weight:700;line-height:1}
+.kpi .d{font-size:12px;color:var(--muted)}
+
+/* 필터 */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 0;margin-bottom:4px}
+.toolbar .lbl{font-size:12px;color:var(--faint);margin-right:2px}
+.pill{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:13px;border:1px solid var(--line);background:none;font-size:13px;color:var(--muted);cursor:pointer}
+.pill:hover{background:var(--hover)}
+.pill[aria-pressed=true]{background:var(--blue-soft);border-color:transparent;color:var(--blue);font-weight:500}
+.pill small{opacity:.75}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.dot.err{background:var(--red)} .dot.warn{background:var(--yel)} .dot.ok{background:var(--grn)}
+.fsep{width:1px;height:18px;background:var(--line);margin:0 4px}
+.toolbar .search{margin-left:auto;font:inherit;font-size:13px;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 10px;width:180px;max-width:100%}
+
+/* 트레이너 가로 탭 */
+.ttabs{display:flex;gap:0;border-bottom:1px solid var(--line);overflow-x:auto;margin-bottom:0;scrollbar-width:thin}
+.ttab{flex:none;display:flex;align-items:center;gap:8px;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:10px 14px;cursor:pointer;color:var(--muted);font-size:15px;white-space:nowrap}
+.ttab:hover{color:var(--fg);background:var(--hover)}
+.ttab[aria-selected=true]{color:var(--fg);font-weight:600;border-color:var(--fg)}
+.ttab .tag{font-weight:500}
+.tsep{flex:none;width:1px;background:var(--line);margin:10px 6px}
+.tsum{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding:12px 2px 0;font-size:13px;color:var(--muted)}
+.tsum b{color:var(--fg);font-weight:600}
+.tsum b.bad{color:var(--red)}
+.tsum:empty{display:none}
+.tbl td.tr{font-weight:500}
+/* 수정 파일 다시 올리기 */
+.rebar{border:1px solid var(--line2);border-radius:8px;padding:14px 16px;margin-bottom:18px;background:var(--panel);display:flex;flex-direction:column;gap:10px}
+.rebar .top1{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.rebar .top1 .txt{flex:1;min-width:220px}
+.rebar .top1 .txt b{display:block}
+.rebar .rounds{display:flex;flex-wrap:wrap;gap:6px;font-size:13px;color:var(--muted);align-items:center}
+.rebar .rounds .r{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border-radius:4px;background:var(--bg);border:1px solid var(--line2)}
+.rebar .rounds .r.cur{border-color:var(--fg);color:var(--fg);font-weight:500}
+.rebar .drop{border:1px dashed var(--line);border-radius:6px;padding:12px 14px;background:var(--bg);display:flex;flex-direction:column;gap:8px}
+.rebar .drop .fl{display:grid;grid-template-columns:130px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:13.5px}
+.rebar .drop .fl .fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rebar .result{font-size:14px}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--blue);animation:sp .8s linear infinite;display:inline-block}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (max-width:860px){.up.sales{grid-template-columns:minmax(0,1fr)}.rebar .drop .fl{grid-template-columns:minmax(0,1fr) auto}.rebar .drop .fl .k{grid-column:1 / -1;color:var(--muted)}}
+/* 관리 표 */
+.tbl{overflow-x:auto;border:1px solid var(--line2);border-radius:8px}
+.tbl table{border-collapse:collapse;width:100%;min-width:900px;font-size:14px;table-layout:fixed}
+.tbl th{font-weight:500;font-size:12.5px;color:var(--muted);text-align:left;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line2);white-space:nowrap}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:middle;overflow:hidden;text-overflow:ellipsis}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr.it{cursor:pointer}
+.tbl tbody tr.it:hover{background:var(--hover)}
+.tbl tr.grp td{background:var(--side);font-weight:600;padding:8px 12px;cursor:pointer}
+.tbl tr.grp .gwrap{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.tbl tr.grp .arr{display:inline-grid;place-items:center;width:18px;height:18px;color:var(--muted);transition:transform .15s}
+.tbl tr.grp.closed .arr{transform:rotate(-90deg)}
+.tbl tr.grp .tn{font-size:15px}
+.tbl tr.grp .sess{margin-left:auto;font-weight:400;font-size:12.5px;color:var(--muted)}
+.tbl tr.grp .sess b{color:var(--fg);font-weight:600} .tbl tr.grp .sess b.bad{color:var(--red)}
+.tbl td.mn{font-weight:600;white-space:nowrap}
+.tbl td.mn small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.tbl td.mn .none{font-weight:400;color:var(--muted)}
+.tbl td.r,.tbl th.r{text-align:right;white-space:nowrap}
+.tbl td:has(.detail){overflow:visible;text-overflow:clip;padding-left:6px;padding-right:10px}
+.tbl .detail{color:var(--blue);border-color:var(--blue-soft);background:var(--blue-soft)}
+.tbl tr.it:hover .detail{border-color:var(--blue)}
+.tbl tr.done td{color:var(--faint)}
+.tbl tr.done td.mn{text-decoration:line-through;text-decoration-color:var(--faint)}
+.okrow td{color:var(--muted);font-size:13px}
+.okrow b{color:var(--grn)}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+
+.ref{margin-top:24px}
+.ref summary{cursor:pointer;font-weight:600;padding:8px 0}
+.ref summary span{font-weight:400;color:var(--muted);font-size:13px;margin-left:6px}
+.ref table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+.ref th,.ref td{padding:7px 10px;border:1px solid var(--line2);text-align:right;white-space:nowrap}
+.ref th{font-weight:500;color:var(--muted);background:var(--panel)}
+.ref th:first-child,.ref td:first-child{text-align:left}
+.ref .bad{color:var(--red);font-weight:600} .ref .good{color:var(--grn)}
+.ref .wrapx{overflow-x:auto;margin:6px 0 12px}
+.ref .cap{font-size:13px;color:var(--muted)}
+
+/* 사용 안내 */
+.guide{display:flex;flex-direction:column;gap:0;border:1px solid var(--line2);border-radius:8px;overflow:hidden;max-width:860px}
+.gstep{display:grid;grid-template-columns:36px minmax(0,1fr);gap:14px;padding:18px 20px;border-bottom:1px solid var(--line2)}
+.gstep:last-child{border-bottom:0}
+.gstep h3{margin:2px 0 6px}
+.gstep ul{margin:0 0 6px;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.gstep .muted{font-size:13px}
+.gnum{width:28px;height:28px;border-radius:50%;background:var(--fg);color:var(--bg);display:grid;place-items:center;font-weight:700;font-size:14px}
+.faq{border-bottom:1px solid var(--line2);max-width:860px}
+.faq summary{cursor:pointer;padding:10px 2px;font-weight:500}
+.faq p{margin:0 0 12px 2px;color:var(--muted)}
+/* 파일 올리기 */
+.uplist{border:1px solid var(--line2);border-radius:8px;overflow:hidden;margin-bottom:16px}
+.up{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line2)}
+.up:last-child{border-bottom:0}
+.up .k{font-weight:600}
+.up.drag{background:var(--blue-soft)}
+.up .pick{cursor:pointer}
+.up.sales{grid-template-columns:150px minmax(0,1fr);align-items:start}
+.seg2{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:10px;max-width:100%}
+.seg2 button{border:0;background:none;padding:5px 12px;font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.seg2 button+button{border-left:1px solid var(--line)}
+.seg2 button[aria-selected=true]{background:var(--fg);color:var(--bg);font-weight:500}
+.srcbox{display:flex;flex-direction:column;gap:8px}
+.srcbox[hidden]{display:none}
+.gsrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.gsrow input[type=url]{flex:1;min-width:0;font:inherit;font-size:13px;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:5px 10px}
+.notice{font-size:13px;line-height:1.55;background:var(--yel-bg);color:var(--yel-fg);border-radius:6px;padding:10px 12px}
+.notice b{display:block;margin-bottom:2px}
+.linkbtn{border:0;background:none;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit;font-weight:600}
+.up .k small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.up .f{min-width:0}
+.up .fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.up .fm{font-size:12.5px;color:var(--muted)}
+.formrow{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;align-items:center;margin-bottom:12px;padding:0 16px}
+.formrow input[type=password]{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;width:200px;max-width:100%}
+.chk{display:inline-flex;align-items:center;gap:6px;color:var(--muted);margin-left:10px}
+
+.code{font-family:var(--mono);font-size:13px;background:var(--side);border-radius:6px;padding:14px 16px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}
+
+/* 오른쪽 상세 창 */
+.peek{position:fixed;top:0;right:0;bottom:0;width:min(480px,100%);background:var(--bg);box-shadow:var(--shadow);z-index:30;display:flex;flex-direction:column;transform:translateX(105%);transition:transform .2s ease;visibility:hidden}
+.peek.on{transform:none;visibility:visible}
+.peek .ph{display:flex;align-items:center;gap:6px;padding:calc(8px + env(safe-area-inset-top,0px)) calc(10px + env(safe-area-inset-right,0px)) 8px 10px;color:var(--muted);font-size:13px;border-bottom:1px solid var(--line2)}
+.iconbtn{width:30px;height:30px;display:grid;place-items:center;border:0;background:none;border-radius:5px;cursor:pointer;color:var(--muted)}
+.iconbtn:hover{background:var(--hover)}
+.peek .pb{overflow-y:auto;padding:18px calc(24px + env(safe-area-inset-right,0px)) calc(40px + env(safe-area-inset-bottom,0px)) 24px}
+.peek h2{font-size:26px;font-weight:700;margin:0 0 14px}
+.kv{display:grid;grid-template-columns:110px minmax(0,1fr);row-gap:10px;column-gap:10px;align-items:center;padding-bottom:16px;border-bottom:1px solid var(--line2)}
+.kv .k{color:var(--muted)}
+.peek .sect{font-size:15px;font-weight:600;margin:18px 0 6px}
+.peek textarea{font:inherit;color:inherit;width:100%;min-height:80px;background:var(--side);border:1px solid var(--line);border-radius:6px;padding:8px 10px;resize:vertical}
+.scrim{position:fixed;inset:0;background:rgba(15,15,15,.25);z-index:25;opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.on{opacity:1;pointer-events:auto}
+
+@media (max-width:860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .nav{position:fixed;left:0;top:0;bottom:0;width:260px;height:auto;z-index:40;transform:translateX(-105%);transition:transform .2s;visibility:hidden;box-shadow:var(--shadow)}
+  .nav.on{transform:none;visibility:visible}
+  .iconbtn.menu{display:grid}
+  .topbar{padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+  .content{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .up,.formrow{grid-template-columns:minmax(0,1fr)}
+  .up{gap:6px}
+  .formrow{padding:0}
+  .chk{margin-left:0;margin-top:6px}
+  .toolbar .search{margin-left:0;width:100%}
+}
+@media (prefers-reduced-motion:reduce){.peek,.scrim,.nav,.tbl tr.grp .arr{transition:none}}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-up" viewBox="0 0 20 20"><path fill="currentColor" d="M10 3.5 14.5 8l-1 1-2.8-2.8V15H9.3V6.2L6.5 9l-1-1L10 3.5Z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 20 20"><path fill="currentColor" d="M3 5h2v2H3V5Zm4 .3h10v1.4H7V5.3ZM3 9h2v2H3V9Zm4 .3h10v1.4H7V9.3ZM3 13h2v2H3v-2Zm4 .3h10v1.4H7v-1.4Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 20 20"><path fill="currentColor" d="m8.2 13.6 7.3-7.3 1 1-8.3 8.3-4.7-4.7 1-1 3.7 3.7Z"/></symbol>
+  <symbol id="i-help" viewBox="0 0 20 20"><path fill="currentColor" d="M10 3a7 7 0 1 1 0 14 7 7 0 0 1 0-14Zm0 1.4a5.6 5.6 0 1 0 0 11.2 5.6 5.6 0 0 0 0-11.2Zm-.7 7.9h1.4v1.4H9.3v-1.4Zm.7-6.1c1.5 0 2.6 1 2.6 2.3 0 1-.6 1.5-1.2 1.9-.5.3-.7.5-.7 1v.3H9.3v-.4c0-1 .6-1.5 1.1-1.8.5-.3.8-.5.8-1 0-.5-.5-.9-1.2-.9-.7 0-1.2.4-1.3 1.1L7.3 8.4C7.5 7 8.6 6.2 10 6.2Z"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 20 20"><path fill="currentColor" d="M5 3h1.4v1h9.1l-2 4 2 4H6.4v5H5V3Zm1.4 2.4v5.2h6.8L11.9 8l1.3-2.6H6.4Z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 20 20"><path fill="currentColor" d="M10 3a7 7 0 1 1 0 14 7 7 0 0 1 0-14Zm0 1.4a5.6 5.6 0 1 0 0 11.2 5.6 5.6 0 0 0 0-11.2Zm-.7 1.8h1.4v3.5l2.6 1.6-.7 1.2-3.3-2V6.2Z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 20 20"><path fill="currentColor" d="M3 3h6v6H3V3Zm1.4 1.4v3.2h3.2V4.4H4.4ZM11 3h6v6h-6V3Zm1.4 1.4v3.2h3.2V4.4h-3.2ZM3 11h6v6H3v-6Zm1.4 1.4v3.2h3.2v-3.2H4.4ZM11 11h6v6h-6v-6Zm1.4 1.4v3.2h3.2v-3.2h-3.2Z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 20 20"><path fill="currentColor" d="M3 5h14v1.4H3V5Zm0 4.3h14v1.4H3V9.3Zm0 4.3h14V15H3v-1.4Z"/></symbol>
+  <symbol id="i-arr" viewBox="0 0 20 20"><path fill="currentColor" d="M5 7.5h10L10 13 5 7.5Z"/></symbol>
+  <symbol id="i-close" viewBox="0 0 20 20"><path fill="currentColor" d="m5.5 4.5 4.5 4.5 4.5-4.5 1 1L11 10l4.5 4.5-1 1L10 11l-4.5 4.5-1-1L9 10 4.5 5.5l1-1Z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 20 20"><path fill="currentColor" d="M5 2h6.6L16 6.4V17a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Zm6 1.4V7h3.6L11 3.4ZM5.4 3.4v13.2h9.2V8.4H10.3a.7.7 0 0 1-.7-.7V3.4H5.4Z"/></symbol>
+</svg>
+
+<div class="app">
+  <aside class="nav" id="nav" aria-label="메뉴">
+    <div class="ws"><span class="logo">급</span><b>급여정산 리체크</b></div>
+    <button class="nitem" data-view="guide"><svg><use href="#i-help"/></svg>사용 안내</button>
+    <div class="ngrp">이번 달 리체크</div>
+    <button class="nitem" data-view="upload"><svg><use href="#i-up"/></svg>파일 올리기</button>
+    <button class="nitem" data-view="result"><svg><use href="#i-list"/></svg>결과 확인<span class="cnt" id="navCnt"></span></button>
+    <div class="ngrp">기록</div>
+    <button class="nitem" data-view="exc"><svg><use href="#i-flag"/></svg>예외 기록<span class="cnt muted" id="excCnt"></span></button>
+    <button class="nitem" data-view="hist"><svg><use href="#i-clock"/></svg>지난 리체크</button>
+    <div class="navfoot"><span class="tag warn plain" style="align-self:flex-start">1차 확정 · 테스트 버전</span>엑셀은 이 브라우저 안에서만 열립니다.</div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="iconbtn menu" id="menuBtn" aria-label="메뉴 열기"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
+      <div class="crumb">급여정산 리체크 / <b id="crView">결과 확인</b></div>
+      <div class="tright">
+        <span id="monthLbl" style="font-size:13.5px;font-weight:500"></span>
+        <span id="topStatus"></span>
+      </div>
+    </header>
+
+    <main class="content">
+      <!-- 사용 안내 -->
+      <section data-v="guide" hidden>
+        <h1>처음 사용하시나요?</h1>
+        <p class="sub">급여 확정 전에 급여정산 엑셀이 맞게 작성됐는지 자동으로 대조하는 페이지입니다. 아래 순서대로 하면 5분 안에 끝납니다.</p>
+
+        <div class="guide">
+          <div class="gstep"><span class="gnum">1</span><div>
+            <h3>파일 3개 준비하기</h3>
+            <ul>
+              <li><b>전월 급여정산 엑셀</b> (예: 9월 파일)</li>
+              <li><b>금월 급여정산 엑셀</b> (예: 10월 파일)</li>
+              <li><b>금월 매출시트</b>: 구글시트에서 바로 읽거나, <b>파일 → 다운로드 → Microsoft Excel(.xlsx)</b>로 받은 파일</li>
+            </ul>
+            <p class="muted">파일 안의 월 표기가 아니라 <b>파일명</b>으로 월을 구분하니, 파일명에 월이 들어가 있는지 확인해 주세요.</p>
+          </div></div>
+
+          <div class="gstep"><span class="gnum">2</span><div>
+            <h3>파일 올리고 리체크 시작</h3>
+            <ul>
+              <li>왼쪽 메뉴 <b>파일 올리기</b>에서 각 칸의 [파일 선택]을 누르거나 파일을 끌어다 놓습니다.</li>
+              <li>매출시트는 <b>구글시트에서 바로 읽기</b>(Google 로그인 필요, 시트 보기 권한이 있는 계정) 또는 <b>엑셀 파일 올리기</b> 중 편한 쪽을 쓰세요.</li>
+              <li><b>엑셀 암호</b>를 입력하고 [리체크 시작]을 누릅니다. '이 브라우저에서 기억'을 켜두면 다음부터 입력하지 않아도 됩니다.</li>
+            </ul>
+            <p class="muted">엑셀 파일은 이 브라우저 안에서만 열리고 어디에도 업로드되지 않습니다.</p>
+          </div></div>
+
+          <div class="gstep"><span class="gnum">3</span><div>
+            <h3>결과 확인하기</h3>
+            <ul>
+              <li>위쪽 <b>트레이너 탭</b>을 누르면 그 트레이너의 안 맞는 회원만 보입니다. 이름 옆 숫자는 남은 건수입니다.</li>
+              <li>맨 오른쪽 <b>알바·직원 탭</b>에서는 급여대장(직원) 검사 결과를 봅니다. 시급 누락, 전월 개인정보 그대로인 신규 입사자, 전월 근무시간을 그대로 복사한 경우를 찾아줍니다.</li>
+              <li>각 줄의 <b>[상세보기 ›]</b>를 누르면 무엇이 안 맞는지와 계산식이 오른쪽에 열립니다.</li>
+            </ul>
+            <p class="muted">색으로 상태를 표시합니다: <span class="tag err">오류</span> <span class="tag warn">확인필요</span> <span class="tag ok">처리 완료</span> (아래 '표시 기준' 참고)</p>
+          </div></div>
+
+          <div class="gstep"><span class="gnum">4</span><div>
+            <h3>엑셀에서 고치고 다시 올리기</h3>
+            <ul>
+              <li><span class="tag err">오류</span> 항목은 급여정산 엑셀에서 한꺼번에 고칩니다.</li>
+              <li>결과 화면 위쪽 <b>[수정 파일 다시 올리기]</b>로 고친 파일만 바꿔 넣고 [다시 검사]를 누르면, 맞게 고쳐진 항목은 자동으로 <span class="tag ok">처리 완료</span>로 바뀝니다.</li>
+              <li><span class="tag warn">확인필요</span> 항목은 양도·환불처럼 정당한 사유가 있을 수 있는 건입니다. 고칠 게 아니라면 [상세보기]에서 <b>[예외로 등록]</b>하고 사유를 적어 주세요. 등록한 예외는 다음 달에 다시 묻지 않습니다.</li>
+            </ul>
+          </div></div>
+        </div>
+
+        <h3 style="margin-top:28px">표시 기준</h3>
+        <div class="tbl"><table style="min-width:520px"><colgroup><col style="width:180px"><col></colgroup><tbody>
+          <tr><td><span class="tag err">오류</span></td><td>숫자가 맞지 않아 엑셀에서 고쳐야 하는 항목 (1원·1회라도 다르면 오류)</td></tr>
+          <tr><td><span class="tag warn">확인필요</span></td><td>양도·환불·이름 표기 차이처럼 사유 확인이 필요한 항목</td></tr>
+          <tr><td><span class="tag ok">처리 완료</span> <span class="tag ok">예외 등록</span></td><td>수정 파일로 맞는 것이 확인됐거나, 예외로 등록된 항목</td></tr>
+          <tr><td><span class="tag err">진행 중</span></td><td>남은 오류가 1건 이상</td></tr>
+          <tr><td><span class="tag ok">리체크 완료</span></td><td>남은 오류가 0건 (확인필요가 남아 있어도 완료)</td></tr>
+        </tbody></table></div>
+
+        <h3 style="margin-top:28px">자주 묻는 질문</h3>
+        <details class="faq"><summary>엑셀 파일이 서버에 저장되나요?</summary><p>아니요. 파일은 지금 쓰는 브라우저 안에서만 열고 검사합니다. 어디에도 업로드되지 않습니다.</p></details>
+        <details class="faq"><summary>다른 컴퓨터에서 지난 리체크와 예외 기록이 안 보여요.</summary><p>기록은 리체크한 컴퓨터의 브라우저에 저장됩니다. 같은 컴퓨터, 같은 브라우저에서 열어 주세요. 브라우저 기록을 지우면 함께 사라집니다.</p></details>
+        <details class="faq"><summary>"같은 파일일 수 있다"는 경고가 떠요.</summary><p>전월과 금월 파일의 총수업과 신규회원 수가 똑같을 때 뜹니다. 금월 파일 대신 전월 파일을 복사만 해 둔 경우가 많으니, 파일을 다시 확인해 주세요.</p></details>
+        <details class="faq"><summary>구글시트 바로 읽기가 안 돼요.</summary><p>로그인한 Google 계정에 그 매출시트를 볼 권한이 있는지 확인해 주세요. 안 되면 엑셀로 내려받아 [엑셀 파일 올리기]를 이용하면 됩니다.</p></details>
+        <details class="faq"><summary>매출시트에만 있는 결제가 '담당 미확인'으로 나와요.</summary><p>매출시트의 결제자는 담당 트레이너와 다를 수 있어서 트레이너를 정하지 않고 보여줍니다. '전체' 탭에서 확인하고, 해당 트레이너의 급여정산 신규 목록에 추가해 주세요.</p></details>
+
+        <div class="row" style="margin-top:24px"><button class="btn primary" data-goto="upload">파일 올리러 가기</button></div>
+      </section>
+
+      <!-- 파일 올리기 -->
+      <section data-v="upload" hidden>
+        <h1>파일 올리기</h1>
+        <p class="sub">전월·금월 급여정산과 금월 매출시트를 올리면 3단계 리체크를 자동으로 돌립니다.</p>
+        <div class="uplist">
+          <div class="up"><div class="k">전월 급여정산<small id="mo-prev">예: 9월</small></div><div class="f"><div class="fn" id="fn-prev">아직 선택 안 함</div><div class="fm" id="fm-prev">엑셀 파일(.xlsx)을 고르거나 이 줄에 끌어다 놓으세요</div></div><label class="btn sm pick" for="f-prev">파일 선택</label><input type="file" id="f-prev" accept=".xlsx,.xls" hidden data-slot="prev"></div>
+          <div class="up"><div class="k">금월 급여정산<small id="mo-cur">예: 10월</small></div><div class="f"><div class="fn" id="fn-cur">아직 선택 안 함</div><div class="fm" id="fm-cur">엑셀 파일(.xlsx)을 고르거나 이 줄에 끌어다 놓으세요</div></div><label class="btn sm pick" for="f-cur">파일 선택</label><input type="file" id="f-cur" accept=".xlsx,.xls" hidden data-slot="cur"></div>
+          <div class="up sales"><div class="k">금월 매출시트<small>선택</small></div>
+            <div class="f">
+              <div class="seg2" role="tablist" aria-label="매출시트 가져오는 방법">
+                <button type="button" role="tab" data-src="gs" aria-selected="true">구글시트에서 바로 읽기</button>
+                <button type="button" role="tab" data-src="xl" aria-selected="false">엑셀 파일 올리기</button>
+              </div>
+              <div id="src-gs" class="srcbox">
+                <div class="gsrow"><input type="url" id="gsUrl" placeholder="https://docs.google.com/spreadsheets/d/..." aria-label="구글시트 링크"><button type="button" class="btn sm primary" id="gsLoad">불러오기</button></div>
+                <div class="fm" id="gsMsg"></div>
+                <div class="notice"><b>구글시트 바로 읽기는 Google 로그인 후 사용할 수 있어요.</b> [불러오기]를 누르면 Google 로그인 창이 열립니다. 로그인한 계정에 매출시트 보기 권한이 있어야 하고, 처음 한 번은 '시트 보기 허용'을 눌러 주세요. 시트는 읽기만 하고 수정하지 않습니다. 권한이 없다면 <button type="button" class="linkbtn" data-src="xl">엑셀 파일 올리기</button>를 이용하세요.</div>
+              </div>
+              <div id="src-xl" class="srcbox" hidden>
+                <div class="gsrow"><div style="min-width:0;flex:1"><div class="fn" id="fn-sales">아직 선택 안 함</div><div class="fm" id="fm-sales">구글시트에서 <b>파일 → 다운로드 → Microsoft Excel(.xlsx)</b>로 받은 파일을 고르거나 이 줄에 끌어다 놓으세요</div></div><label class="btn sm pick" for="f-sales">파일 선택</label><input type="file" id="f-sales" accept=".xlsx,.xls" hidden data-slot="sales"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="formrow"><span class="muted">엑셀 암호</span><div><input type="password" id="pw" value="" autocomplete="off" aria-label="엑셀 암호"><label class="chk"><input type="checkbox" id="remember" checked> 이 브라우저에서 기억</label></div></div>
+        <div class="callout"><span class="ci" aria-hidden="true">💡</span><div>검사 후 엑셀에서 고친 파일은 결과 화면에서 다시 올리면 됩니다. 파일 안의 월 표기 대신 <b>파일명</b>으로 월을 판단합니다. 전월과 금월의 총수업·신규회원 수가 똑같으면 작업 안 된 사본일 수 있어 먼저 알려드립니다.</div></div>
+        <div class="row" style="margin-top:16px"><button class="btn primary" id="startBtn">리체크 시작</button><span id="runMsg" class="muted" style="font-size:13.5px"></span></div>
+      </section>
+
+      <!-- 결과 확인 -->
+      <section data-v="result" hidden>
+        <h1 id="resTitle">리체크 결과</h1>
+        <p class="sub">트레이너를 고르면 그 트레이너의 안 맞는 회원만 보입니다. 행을 누르면 원인과 계산식이 열립니다.</p>
+        <div id="resEmpty" class="empty" hidden>아직 리체크를 하지 않았어요.<div class="row" style="justify-content:center;margin-top:12px"><button class="btn primary" data-goto="upload">파일 올리러 가기</button></div></div>
+        <div id="resBody">
+        <div id="resWarn"></div>
+        <div class="rebar" id="rebar"></div>
+        <div class="kpis" id="kpis"></div>
+        <div class="ttabs" id="ttabs" role="tablist" aria-label="트레이너"></div>
+        <div class="tsum" id="tsum"></div>
+        <div class="toolbar" id="toolbar"></div>
+        <div class="tbl"><table id="mainTbl"></table></div>
+        <details class="ref">
+          <summary>검증 계산표<span>세션 공식 · 급여대장 대조 · 매출 합계</span></summary>
+          <div id="refbody"></div>
+        </details>
+        </div>
+      </section>
+
+      <!-- 예외 기록 -->
+      <section data-v="exc" hidden>
+        <h1>예외 기록</h1>
+        <p class="sub">정당한 사유로 확인된 건입니다. 여기 있는 건은 다음 달 리체크에서 다시 묻지 않습니다.</p>
+        <div class="tbl"><table style="min-width:640px">
+          <colgroup><col style="width:14%"><col style="width:14%"><col style="width:16%"><col><col style="width:14%"></colgroup>
+          <thead><tr><th>트레이너</th><th>회원</th><th>종류</th><th>사유</th><th>등록월</th></tr></thead>
+          <tbody id="excBody"></tbody></table></div>
+      </section>
+
+      <!-- 지난 리체크 -->
+      <section data-v="hist" hidden>
+        <h1>지난 리체크</h1>
+        <p class="sub">이 브라우저에서 진행한 리체크 기록입니다.</p>
+        <div class="tbl"><table style="min-width:600px">
+          <colgroup><col style="width:18%"><col style="width:16%"><col style="width:12%"><col style="width:12%"><col><col style="width:18%"></colgroup>
+          <thead><tr><th>정산월</th><th>상태</th><th class="r">오류</th><th class="r">확인필요</th><th>예외 등록</th><th>마친 날</th></tr></thead>
+          <tbody id="histBody"></tbody></table></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="peek" id="peek" aria-label="상세" aria-hidden="true">
+  <div class="ph"><button class="iconbtn" id="peekClose" aria-label="닫기"><svg width="16" height="16"><use href="#i-close"/></svg></button><span id="peekCrumb"></span></div>
+  <div class="pb" id="peekBody"></div>
+</aside>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<script>
+// 급여정산 리체크 엔진: 암호 해제 → 시트 읽기 → 검사
+(function(root){
+const XLSX = root.XLSX || (typeof require!=="undefined" && require("xlsx"));
+const CJ = root.CryptoJS || (typeof require!=="undefined" && require("crypto-js"));
+
+/* ---------- 암호 해제 (ECMA-376 Standard 4.2 / Agile 4.4) ---------- */
+const u8ToWA = u8 => { const w=[]; for(let i=0;i<u8.length;i+=4) w.push((u8[i]<<24)|((u8[i+1]||0)<<16)|((u8[i+2]||0)<<8)|(u8[i+3]||0)); return CJ.lib.WordArray.create(w,u8.length); };
+const waToU8 = wa => { const n=wa.sigBytes,o=new Uint8Array(n); for(let i=0;i<n;i++) o[i]=(wa.words[i>>>2]>>>(24-(i%4)*8))&255; return o; };
+const cat = (...a) => { const n=a.reduce((s,x)=>s+x.length,0),o=new Uint8Array(n); let p=0; for(const x of a){o.set(x,p);p+=x.length} return o; };
+const le32 = n => new Uint8Array([n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]);
+const utf16 = s => { const o=new Uint8Array(s.length*2); for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);o[i*2]=c&255;o[i*2+1]=c>>8} return o; };
+const b64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+const eq = (a,b) => a.length===b.length && a.every((x,i)=>x===b[i]);
+const toBytes = c => c instanceof Uint8Array ? c : Uint8Array.from(c);
+
+function aesDec(keyU8, dataU8, mode, ivU8){
+  const opt={mode: mode==="ecb"?CJ.mode.ECB:CJ.mode.CBC, padding:CJ.pad.NoPadding};
+  if(ivU8) opt.iv=u8ToWA(ivU8);
+  return waToU8(CJ.AES.decrypt({ciphertext:u8ToWA(dataU8)}, u8ToWA(keyU8), opt));
+}
+function hashFn(name){ return name==="SHA512"?CJ.SHA512: name==="SHA384"?CJ.SHA384: name==="SHA256"?CJ.SHA256: CJ.SHA1; }
+
+function decryptStandard(info, pkg, pw){
+  const dv=new DataView(info.buffer,info.byteOffset,info.byteLength);
+  const hSize=dv.getUint32(8,true), h=12;
+  const keyBits=dv.getUint32(h+16,true);
+  let p=12+hSize;
+  const saltSize=dv.getUint32(p,true); const salt=info.slice(p+4,p+4+saltSize); p+=4+saltSize;
+  const encVer=info.slice(p,p+16); p+=16;
+  const verHashSize=dv.getUint32(p,true); p+=4;
+  const encVerHash=info.slice(p,p+32);
+  let H=waToU8(CJ.SHA1(u8ToWA(cat(salt,utf16(pw)))));
+  for(let i=0;i<50000;i++) H=waToU8(CJ.SHA1(u8ToWA(cat(le32(i),H))));
+  const Hf=waToU8(CJ.SHA1(u8ToWA(cat(H,le32(0)))));
+  const buf1=new Uint8Array(64).fill(0x36), buf2=new Uint8Array(64).fill(0x5c);
+  for(let i=0;i<Hf.length;i++){buf1[i]^=Hf[i];buf2[i]^=Hf[i]}
+  const x=cat(waToU8(CJ.SHA1(u8ToWA(buf1))),waToU8(CJ.SHA1(u8ToWA(buf2))));
+  const key=x.slice(0,keyBits/8);
+  const ver=aesDec(key,encVer,"ecb");
+  const vh=aesDec(key,encVerHash,"ecb").slice(0,verHashSize);
+  if(!eq(waToU8(CJ.SHA1(u8ToWA(ver))),vh)) throw new Error("WRONG_PASSWORD");
+  const size=new DataView(pkg.buffer,pkg.byteOffset,8).getUint32(0,true);
+  let body=pkg.slice(8); const rem=body.length%16; if(rem) body=body.slice(0,body.length-rem);
+  return aesDec(key,body,"ecb").slice(0,size);
+}
+
+function decryptAgile(info, pkg, pw){
+  const xml=new TextDecoder().decode(info.slice(8));
+  const attr=(tag,name)=>{const m=xml.match(new RegExp("<(?:\\w+:)?"+tag+"\\b[^>]*\\b"+name+"=\"([^\"]*)\""));return m&&m[1]};
+  const kd={salt:b64(attr("keyData","saltValue")),hash:attr("keyData","hashAlgorithm"),bs:+attr("keyData","blockSize")};
+  const ek=xml.match(/<(?:\w+:)?encryptedKey\b[^>]*>/)[0];
+  const ea=n=>{const m=ek.match(new RegExp("\\b"+n+"=\"([^\"]*)\""));return m&&m[1]};
+  const spin=+ea("spinCount"), salt=b64(ea("saltValue")), hn=ea("hashAlgorithm"), kbits=+ea("keyBits");
+  const H=hashFn(hn), hs=s=>waToU8(H(u8ToWA(s)));
+  let h=hs(cat(salt,utf16(pw)));
+  for(let i=0;i<spin;i++) h=hs(cat(le32(i),h));
+  const derive=blk=>{let k=hs(cat(h,blk));const n=kbits/8;if(k.length<n){const t=new Uint8Array(n).fill(0x36);t.set(k);k=t}return k.slice(0,n)};
+  const B1=[0xfe,0xa7,0xd2,0x76,0x3b,0x4b,0x9e,0x79],B2=[0xd7,0xaa,0x0f,0x6d,0x30,0x61,0x34,0x4e],B3=[0x14,0x6e,0x0b,0xe7,0xab,0xac,0xd0,0xd6];
+  const vIn=aesDec(derive(new Uint8Array(B1)),b64(ea("encryptedVerifierHashInput")),"cbc",salt).slice(0,salt.length);
+  const vHash=aesDec(derive(new Uint8Array(B2)),b64(ea("encryptedVerifierHashValue")),"cbc",salt);
+  const calc=hs(vIn); if(!eq(calc,vHash.slice(0,calc.length))) throw new Error("WRONG_PASSWORD");
+  const key=aesDec(derive(new Uint8Array(B3)),b64(ea("encryptedKeyValue")),"cbc",salt).slice(0,kbits/8);
+  const KH=hashFn(kd.hash);
+  const size=new DataView(pkg.buffer,pkg.byteOffset,8).getUint32(0,true);
+  const out=new Uint8Array(size); let o=0;
+  for(let i=0,p=8;p<pkg.length;i++,p+=4096){
+    const seg=pkg.slice(p,Math.min(p+4096,pkg.length));
+    const iv=waToU8(KH(u8ToWA(cat(kd.salt,le32(i))))).slice(0,kd.bs);
+    const d=aesDec(key,seg.slice(0,seg.length-seg.length%16),"cbc",iv);
+    out.set(d.slice(0,Math.min(d.length,size-o)),o); o+=d.length; if(o>=size)break;
+  }
+  return out;
+}
+
+function openWorkbook(u8, pw){
+  if(u8[0]===0x50&&u8[1]===0x4b) return XLSX.read(u8,{type:"array"});
+  let cfb; try{ cfb=XLSX.CFB.read(u8,{type:"array"}); }catch(e){ throw new Error("NOT_EXCEL"); }
+  const f=n=>XLSX.CFB.find(cfb,n);
+  const info=f("EncryptionInfo"), pkg=f("EncryptedPackage");
+  if(!info||!pkg) return XLSX.read(u8,{type:"array"});
+  if(!pw) throw new Error("NEED_PASSWORD");
+  const I=toBytes(info.content), P=toBytes(pkg.content);
+  const major=I[0]|(I[1]<<8), minor=I[2]|(I[3]<<8);
+  const plain = (major===4&&minor===4) ? decryptAgile(I,P,pw) : decryptStandard(I,P,pw);
+  return XLSX.read(plain,{type:"array"});
+}
+
+/* ---------- 셀 읽기 도우미 ---------- */
+const nz = s => String(s??"").replace(/\s+/g,"");
+function sheetApi(ws){
+  const ref=XLSX.utils.decode_range(ws["!ref"]||"A1");
+  const cell=(r,c)=>ws[XLSX.utils.encode_cell({r:r-1,c:c-1})];
+  const v=(r,c)=>{const x=cell(r,c);return x?x.v:undefined};
+  const n=(r,c)=>{const x=v(r,c);const k=typeof x==="number"?x:parseFloat(String(x??"").replace(/,/g,""));return isFinite(k)?k:0};
+  return {v,n,cell,maxR:ref.e.r+1,maxC:ref.e.c+1};
+}
+const col = s => XLSX.utils.decode_col(s)+1;
+function findLabel(S,label,within){
+  const L=nz(label);
+  for(let r=1;r<=Math.min(S.maxR,within||S.maxR);r++) for(let c=1;c<=S.maxC;c++){
+    if(nz(S.v(r,c))===L){ for(let k=c+1;k<=Math.min(S.maxC,c+8);k++){const x=S.v(r,k);if(x!==undefined&&x!=="")return {val:x,r,c:k}} }
+  }
+  return null;
+}
+function normDate(x,cellObj){
+  if(cellObj&&cellObj.t==="n"&&typeof x==="number"){const d=XLSX.SSF.parse_date_code(x);if(d)return `${d.m}/${d.d}`}
+  if(x instanceof Date) return `${x.getMonth()+1}/${x.getDate()}`;
+  const s=String(x??"");
+  let m=s.match(/(\d{1,2})\s*월\s*(\d{1,2})/); if(m) return `${+m[1]}/${+m[2]}`;
+  m=s.match(/(?:\d{2,4}[./-])?(\d{1,2})[./-](\d{1,2})/); if(m) return `${+m[1]}/${+m[2]}`;
+  return nz(s);
+}
+function parseHist(x){
+  if(x===undefined||x===null||x==="") return [];
+  if(typeof x==="number") return [x];
+  return String(x).split("/").map(s=>s.trim()).filter(s=>s!=="").map(s=>+s||0);
+}
+const sum = a => a.reduce((s,x)=>s+x,0);
+const r0 = x => Math.round(x);
+const fmtH = h => h.map(x=>String(x).padStart(2,"0")).join("/")||"(없음)";
+const DUMMY = /^트레이너\d+$/;
+
+/* ---------- 급여정산 파일 읽기 ---------- */
+function readPayroll(wb){
+  const out={trainers:[],ledger:{},members:[],staff:[],roster:{},warnings:[],sheetMissing:[]};
+  const L=wb.Sheets["급여대장(PT)"];
+  if(!L) out.warnings.push("'급여대장(PT)' 시트를 찾지 못했습니다.");
+  else{
+    const S=sheetApi(L);
+    let start=14; for(let r=1;r<=30;r++) if(nz(S.v(r,2))==="이름"){start=r+2;break}
+    for(let r=start;r<=S.maxR;r++){
+      const name=nz(S.v(r,col("B"))); if(!name||DUMMY.test(name)) continue;
+      out.trainers.push(name);
+      out.ledger[name]={row:r,H:S.n(r,col("H")),I:S.n(r,col("I")),J:S.n(r,col("J")),K:S.n(r,col("K")),L:S.n(r,col("L")),O:S.n(r,col("O")),P:S.n(r,col("P")),AC:S.n(r,col("AC"))};
+    }
+  }
+  out.sheets={};
+  for(const t of out.trainers){
+    const ws=wb.Sheets[t]; if(!ws){out.sheetMissing.push(t);continue}
+    out.sheets[t]=readTrainerSheet(ws,t,out.members);
+  }
+  // 급여대장에 없는 트레이너 시트
+  out.extraSheets=wb.SheetNames.filter(n=>!DUMMY.test(n)&&!out.trainers.includes(n)&&(()=>{const S=sheetApi(wb.Sheets[n]);for(let r=1;r<=Math.min(S.maxR,20);r++)for(let c=1;c<=S.maxC;c++)if(nz(S.v(r,c)).includes("이번달P.T등록회원내역"))return true;return false})()&&(()=>{const S=sheetApi(wb.Sheets[n]);for(let r=16;r<=40;r++)if(nz(S.v(r,3)))return true;return false})());
+  readStaff(wb,out);
+  return out;
+}
+function readTrainerSheet(ws,t,allMembers){
+  const S=sheetApi(ws);
+  const lab=k=>{const f=findLabel(S,k,15);return f?(typeof f.val==="number"?f.val:parseFloat(f.val)||0):null};
+  const info={total:lab("총수업개수"),pay:lab("정산금액"),sales:lab("총매출"),walk:lab("워크인매출"),own:lab("개인역량매출"),newM:[],remM:[]};
+  const secs=[["new","이번달P.T등록회원내역"],["rem","잔여P.T회원내역"]];
+  for(const [kind,title] of secs){
+    let hr=0; for(let r=1;r<=S.maxR&&!hr;r++) for(let c=1;c<=S.maxC;c++) if(nz(S.v(r,c)).includes(title)){hr=r;break}
+    if(!hr) continue;
+    for(let r=hr+3;r<=S.maxR;r++){
+      if(nz(S.v(r,col("O")))==="합계") break;
+      const name=nz(S.v(r,col("C"))); if(!name) continue;
+      const m={t,kind,row:r,name,date:normDate(S.v(r,col("D")),S.cell(r,col("D"))),route:nz(S.v(r,col("F"))),
+        pay:S.n(r,col("J")),gross:S.n(r,col("G"))+S.n(r,col("H"))+S.n(r,col("I")),K:S.n(r,col("K")),hist:kind==="new"?[S.n(r,col("M"))]:parseHist(S.v(r,col("M"))),N:S.n(r,col("N"))};
+      (kind==="new"?info.newM:info.remM).push(m); allMembers.push(m);
+    }
+  }
+  return info;
+}
+function readStaff(wb,out){
+  const ws=wb.Sheets["급여대장(직원)"];
+  if(ws){const S=sheetApi(ws);
+    let start=16; for(let r=1;r<=30;r++) if(nz(S.v(r,3))==="이름"){start=r+2;break}
+    for(let r=start;r<=S.maxR;r++){
+      const name=nz(S.v(r,col("C"))); if(!name||name==="0") continue;
+      out.staff.push({row:r,name,job:nz(S.v(r,col("D"))),bank:nz(S.v(r,col("E"))),acct:String(S.v(r,col("F"))??"").replace(/\D/g,""),jumin:String(S.v(r,col("G"))??"").replace(/\D/g,""),
+        J:S.n(r,col("J")),K:S.n(r,col("K")),R:S.n(r,col("R"))});
+    }
+  } else out.warnings.push("'급여대장(직원)' 시트를 찾지 못했습니다.");
+  const rs=wb.Sheets["아르바이트 근무표"];
+  if(rs){const S=sheetApi(rs);
+    let nameRow=3,day1=8,totRow=39;
+    for(let r=1;r<=10;r++) if(nz(S.v(r,1))==="이름") nameRow=r;
+    for(let r=1;r<=15;r++) if(nz(S.v(r,1))==="1일"){day1=r;break}
+    for(let r=day1;r<=day1+40;r++) if(nz(S.v(r,1)).includes("총일한시간")){totRow=r;break}
+    for(let c=2;c<=S.maxC;c+=4){
+      const name=nz(S.v(nameRow,c)); if(!name||name==="0"||nz(S.v(nameRow+3,c))!=="From"&&nz(S.v(nameRow+3,c))!=="From~To") { if(nz(S.v(nameRow+3,c))==="From~To") break; if(!name||name==="0") continue; }
+      if(nz(S.v(nameRow+3,c))!=="From") continue;
+      const days=[];
+      for(let d=0;d<31;d++){const r=day1+d;const f=S.v(r,c),to=S.v(r,c+1),h=S.n(r,c+3);
+        const fmt=x=>typeof x==="number"?Math.round(x*1440)%1440:nz(x);
+        days.push(f===undefined&&to===undefined&&!h?null:{f:fmt(f),t:fmt(to),h});}
+      out.roster[name]={col:c,days,total:S.n(totRow,c),wage:S.n(nameRow+2,c)};
+    }
+  }
+  return out;
+}
+
+
+/* ---------- 매출시트 읽기 (엑셀 또는 Google 시트 API, 같은 격자로) ---------- */
+const money = x => { const t=String(x??"").replace(/[^0-9.\-]/g,""); const v=parseFloat(t); return isFinite(v)?Math.round(v):0; };
+function gridsFromWorkbook(wb){ const g={}; for(const n of wb.SheetNames) g[n]=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:""}); return g; }
+function readSales(grids){
+  const out={days:[],pays:[],ptTotal:0,warnings:[]};
+  for(let d=1;d<=31;d++){
+    const g=grids[`${d}일`]; if(!g) continue;
+    let pt=null, hdr=-1;
+    for(let r=0;r<g.length;r++){ const row=g[r]||[];
+      if(pt===null&&nz(row[0])==="매출총계") pt=money(row[6]);
+      if(hdr<0&&nz(row[19])==="번호"&&nz(row[21])==="성함") hdr=r; }
+    if(pt===null){ out.warnings.push(`매출시트 ${d}일 탭에서 '매출 총계' 행을 찾지 못했습니다.`); pt=0; }
+    out.days.push({d,pt}); out.ptTotal+=pt;
+    if(hdr<0) continue;
+    for(let r=hdr+1;r<g.length;r++){ const row=g[r]||[]; const name=nz(row[21]); if(!name) continue;
+      out.pays.push({d,row:r+1,kind:nz(row[20]),name,item:nz(row[23]),product:String(row[24]??"").trim(),method:nz(row[25]),amount:money(row[28]),memo:String(row[29]??"").trim(),payer:nz(row[30])}); }
+  }
+  if(!out.days.length) out.warnings.push("매출시트에서 '1일'~'31일' 탭을 찾지 못했습니다.");
+  return out;
+}
+const sessOf = s => { const m=String(s||"").match(/(\d+)\s*회/); return m?+m[1]:null; };
+const splitNames = s => String(s).split(/[,/·&+]/).map(x=>nz(x)).filter(Boolean);
+function salesChecks(cur,sales,add){
+  const W=n=>n.toLocaleString("ko-KR");
+  const PT=sales.pays.filter(p=>p.item==="PT");
+  const ODD=sales.pays.filter(p=>/업그레이드|미수금/.test(p.item));
+  const used=new Set();
+  const ledgerP=sum(Object.values(cur.ledger).map(l=>l.P));
+  const diffT=sales.ptTotal-ledgerP;
+  if(diffT!==0) add({rule:"M1",cat:"m",lv:"err",t:"매출 공통",m:"",sub:"",what:"PT 총매출이 급여대장과 다름",diff:`${W(diffT)}원`,
+    why:`매출시트 일별 '매출 총계'의 PT 합계와 급여대장(PT) 총매출 합계가 ${W(Math.abs(diffT))}원 다릅니다. 아래 회원별 매출 대조 항목에서 원인을 찾아 보세요.`,
+    calc:`매출시트 PT 합계 (1~31일)  ${W(sales.ptTotal)}\n급여대장(PT) 총매출 합계  ${W(ledgerP)}\n차이  ${W(diffT)}`});
+  const near=(a,b)=>a.length===b.length&&[...a].filter((c,i)=>c!==b[i]).length===1;
+  const news=cur.members.filter(m=>m.kind==="new");
+  for(const m of news){
+    const names=splitNames(m.name), sub=`${m.date} 등록`;
+    let hits=PT.filter(p=>!used.has(p)&&names.includes(p.name));
+    let fuzzy=null;
+    if(!hits.length){ const f=PT.find(p=>!used.has(p)&&names.some(n=>near(n,p.name))&&p.amount===Math.round(m.gross)); if(f){hits=[f];fuzzy=f} }
+    let glued=false;
+    if(!hits.length&&m.name.length>=4){ const c=PT.filter(p=>!used.has(p)&&p.name.length>=2&&m.name.includes(p.name.length>=3?p.name.slice(-2):p.name));
+      if(c.length>=2&&sum(c.map(p=>p.amount))===Math.round(m.gross)){hits=c;glued=true} }
+    if(!hits.length){
+      const o=ODD.find(p=>names.includes(p.name));
+      if(o){ add({rule:"M4",cat:"m",lv:"warn",t:m.t,m:m.name,sub,what:`PT가 '${o.item}' 항목으로 잡힘`,diff:`${W(o.amount)}원`,
+        why:`매출시트에서 이 회원 결제가 PT가 아니라 '${o.item}' 항목으로 들어가 PT 매출 합계에서 빠졌을 수 있습니다.`,calc:`매출시트 ${o.d}일 탭 ${o.row}행\n항목 ${o.item} · ${o.product} · ${W(o.amount)}원`}); continue; }
+      add({rule:"M2",cat:"m",lv:"err",t:m.t,m:m.name,sub,what:"매출시트에서 PT 결제를 찾지 못함",diff:`${W(Math.round(m.gross))}원`,
+        why:"급여정산 신규 회원인데 매출시트 1~31일 탭에 같은 이름의 PT 결제가 없습니다. 이름 표기나 결제 항목을 확인해 주세요.",calc:`급여정산 ${m.t} 신규  ${m.name} · 등록일 ${m.date} · 결제 ${W(Math.round(m.gross))}원 · ${m.K}회\n매출시트  찾지 못함`}); continue; }
+    hits.forEach(p=>used.add(p));
+    const amt=sum(hits.map(p=>p.amount)), g=Math.round(m.gross);
+    const where=hits.map(p=>`${p.d}일 ${p.name} ${p.product||"(상품명 없음)"} ${W(p.amount)}원${p.memo?` (비고 ${p.memo})`:""}`).join("\n");
+    if(glued) add({rule:"M5",cat:"m",lv:"warn",t:m.t,m:m.name,sub:`매출시트엔 ${hits.map(p=>p.name).join(", ")}`,what:"여러 명 수업인데 이름이 붙어 있음",diff:"이름",
+      why:`급여정산 회원명 '${m.name}'이 쉼표 없이 붙어 있어 매출시트의 ${hits.map(p=>p.name).join(", ")} 결제와 금액 합계로 짝지었습니다. 급여정산에 '${hits.map(p=>p.name).join(",")}'처럼 쉼표로 나눠 적어 주세요.`,calc:where});
+    if(fuzzy) add({rule:"M5",cat:"m",lv:"warn",t:m.t,m:m.name,sub:`매출시트엔 '${fuzzy.name}'`,what:"회원 이름 표기가 다름",diff:"이름",
+      why:`금액이 같고 이름이 한 글자만 달라 같은 회원으로 보고 대조했습니다. 매출시트는 '${fuzzy.name}', 급여정산은 '${m.name}'입니다.`,calc:where});
+    if(amt!==g) add({rule:"M2",cat:"m",lv:"err",t:m.t,m:m.name,sub,what:"결제금액이 매출시트와 다름",diff:`${W(g-amt)}원`,
+      why:`급여정산 결제금액(현금+무통장+카드)은 ${W(g)}원인데 매출시트 PT 결제는 ${W(amt)}원입니다.`,calc:`급여정산  ${W(g)}원\n매출시트\n${where}`});
+    const ss=hits.map(p=>sessOf(p.product)).filter(x=>x!==null);
+    const sv=ss.length?ss[0]:null;
+    if(sv!==null&&sv!==m.K) add({rule:"M6",cat:"m",lv:"warn",t:m.t,m:m.name,sub,what:"상품명 횟수와 등록세션이 다름",diff:`${m.K-sv>0?"+":""}${m.K-sv}회`,
+      why:`매출시트 상품명은 ${sv}회인데 급여정산 등록세션은 ${m.K}회입니다. 서비스 세션이면 예외로 등록해 주세요.`,calc:`급여정산 등록세션  ${m.K}\n매출시트\n${where}`});
+  }
+  for(const p of PT){ if(used.has(p)) continue;
+    add({rule:"M3",cat:"m",lv:"err",t:"담당 미확인",m:p.name,sub:`${p.d}일 결제`,what:"매출시트에만 있는 PT 결제",diff:`${W(p.amount)}원`,
+      why:"매출시트에 PT 결제가 있는데 어느 트레이너의 급여정산 신규 목록에도 없습니다. 수업료가 덜 지급될 수 있어요. 결제자는 담당 트레이너와 다를 수 있어 담당을 정하지 않았습니다.",
+      calc:`매출시트 ${p.d}일 탭 ${p.row}행\n${p.kind?p.kind+" · ":""}항목 PT · ${p.product||"(상품명 없음)"} · ${p.method} · ${W(p.amount)}원${p.payer?` · 결제자 ${p.payer}`:""}${p.memo?`\n비고 ${p.memo}`:""}`}); }
+}
+
+/* ---------- 검사 ---------- */
+function monthOf(filename){const m=String(filename||"").match(/(\d{1,2})\s*월/)||String(filename||"").match(/\d{2}[._-](\d{1,2})(?!\d)/);return m?+m[1]:null}
+const mask = {
+  jumin: s => s&&s.length>=7 ? `${s.slice(0,6)}-${s[6]}●●●●●●` : "(없음)",
+  acct: (b,s) => s ? `${b} ${s.slice(0,3)}●●●●${s.slice(-3)}` : "(없음)",
+};
+const hm = m => typeof m==="number" ? `${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}` : m;
+
+function runChecks(prev,cur,opts={}){
+  const sales=opts.sales||null;
+  const items=[]; const add=o=>{o.key=[o.rule,o.t,o.m||"",o.sub||""].join("|");items.push(o)};
+  const pm=prev.members, cm=cur.members;
+  const k=m=>m.name+"|"+m.date;
+  const prevBy={}; for(const m of pm)(prevBy[k(m)]=prevBy[k(m)]||[]).push(m);
+  const used=new Set();
+  const sess={};
+  // S1
+  for(const t of cur.trainers){
+    const L=cur.ledger[t], ps=prev.sheets[t], cs=cur.sheets[t]; if(!cs) continue;
+    const p=ps?sum([...ps.newM,...ps.remM].map(m=>m.N)):0, nw=sum(cs.newM.map(m=>m.K)), r=sum([...cs.newM,...cs.remM].map(m=>m.N)), g=L.J+L.K, c=p+nw-r+g, d=c-L.L;
+    sess[t]={p,nw,r,g,c,led:L.L,d,noPrev:!ps};
+    if(d!==0) add({rule:"S1",cat:"s",lv:"err",t,m:"",sub:"",what:"트레이너 세션 공식 불일치",diff:`${d>0?"+":""}${d}회`,
+      why:`전월 남은세션 + 금월 신규 등록세션 − 금월 남은세션 + SPT·GX가 급여대장 총수업과 ${Math.abs(d)}회 다릅니다. 아래 회원별 항목에서 원인을 찾아 보세요.${ps?"":" (전월 파일에 이 트레이너 시트가 없어 전월 남은세션을 0으로 계산했습니다.)"}`,
+      calc:`전월남은 ${p} + 신규등록 ${nw} − 금월남은 ${r} + SPT ${L.J} + GX ${L.K} = ${c}\n급여대장(PT) 총세션(L열)  ${L.L}\n차이  ${d>0?"+":""}${d}`});
+  }
+  // S3~S6, S8: 1차 이름+등록일, 2차 같은 트레이너에서 이름만 같거나 등록일 같고 이름이 비슷한 회원
+  const pairs=[];
+  const rems=cm.filter(m=>m.kind==="rem");
+  const left=[];
+  for(const m of rems){
+    const cands=(prevBy[k(m)]||[]).filter(x=>!used.has(x));
+    const p=cands.find(x=>x.t===m.t)||cands[0];
+    if(p){used.add(p);pairs.push([m,p,null])} else left.push(m);
+  }
+  const base=s=>s.replace(/[0-9\s()]/g,"");
+  const near=(a,b)=>{if(base(a)===base(b))return true;if(a.length!==b.length)return false;let d=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])d++;return d===1};
+  for(const m of left){
+    const pool=pm.filter(x=>!used.has(x)&&x.t===m.t);
+    const p=pool.find(x=>x.date===m.date&&near(x.name,m.name))||pool.find(x=>x.name===m.name);
+    if(p){used.add(p);pairs.push([m,p,p.name!==m.name?"name":"date"])}
+    else add({rule:"S8",cat:"s",lv:"warn",t:m.t,m:m.name,sub:`${m.date} 등록`,what:"전월에 없던 잔여회원",diff:`${m.N}회`,
+        why:"금월 잔여 목록에 있는데 전월 어느 트레이너 목록에서도 같은 회원(이름+등록일)을 찾지 못했습니다. 이관·양도 출처나 등록일 표기를 확인해 주세요.",
+        calc:`금월 ${m.t} 잔여  등록일 ${m.date} · 등록세션 ${m.K} · 남은 ${m.N}\n차감이력  ${fmtH(m.hist)}\n전월  찾지 못함`});
+  }
+  for(const [m,p,fuzzy] of pairs){
+    const sub=`${m.date} 등록`;
+    const last=m.hist.length?m.hist[m.hist.length-1]:0;
+    const kept=eq(m.hist.slice(0,p.hist.length),p.hist);   // 전월 이력이 그대로 앞에 있음
+    const d0=kept?sum(m.hist.slice(p.hist.length)):last;   // 이번 달 차감
+    const before=sum(m.hist)-d0, prevSum=sum(p.hist);
+    const d=p.N-m.N-d0;
+    const moved=p.t!==m.t;
+    if(kept&&m.hist.length===p.hist.length&&last>0) add({rule:"S3b",cat:"s",lv:"err",t:m.t,m:m.name,sub,what:"차감이력에 이번 달 칸이 없음",diff:`+${last}회`,
+      why:`차감이력에 이번 달 칸이 추가되지 않아 마지막 칸(지난달 ${last}회)이 이번 달 잔여세션 차감으로 계산됩니다. 이번 달 수업이 없으면 '/00'을, 있으면 이번 달 횟수를 이어서 적어 주세요.`,
+      calc:`차감이력  전월 ${fmtH(p.hist)}  →  금월 ${fmtH(m.hist)} (변화 없음)\n남은세션  전월 ${p.N}  →  금월 ${m.N}\n급여대장 잔여세션에 들어간 값  ${last}`});
+    if(fuzzy) add({rule:"S2",cat:"s",lv:"warn",t:m.t,m:m.name,sub,what:fuzzy==="name"?"회원 이름이 전월과 다름":"등록일이 전월과 다름",diff:fuzzy==="name"?"이름":"등록일",
+      why:fuzzy==="name"?`등록일이 같고 이름이 비슷해서 전월 '${p.name}'과 같은 회원으로 보고 검사했습니다. 이름 표기를 맞춰 주세요.`:`이름이 같아서 전월 등록일 '${p.date}'인 회원과 같은 회원으로 보고 검사했습니다. 등록일 표기를 맞춰 주세요.`,
+      calc:`전월  ${p.name} · 등록일 ${p.date}\n금월  ${m.name} · 등록일 ${m.date}`});
+    if(d!==0&&!(kept&&m.hist.length===p.hist.length)) add({rule:"S3",cat:"s",lv:"err",t:m.t,m:m.name,sub,what:`세션 ${Math.abs(d)}회 안 맞음`,diff:`${d>0?"+":""}${d}회`,
+      why:`전월 남은 ${p.N}회에서 이번 달 차감 ${d0}회를 빼면 ${p.N-d0}회여야 하는데, 금월 남은세션이 ${m.N}회입니다.${moved?` (전월엔 ${p.t} 트레이너 목록에 있었습니다.)`:""}`,
+      calc:`전월남은 ${p.N} − 금월남은 ${m.N} − 이번달 차감 ${d0} = ${d}\n차감이력  전월 ${fmtH(p.hist)}  →  금월 ${fmtH(m.hist)}`});
+    if(!kept&&before!==prevSum) add({rule:"S4",cat:"s",lv:"warn",t:m.t,m:m.name,sub,what:"지난달까지 차감 합이 바뀜 (전월 수정 의심)",diff:`${before-prevSum>0?"+":""}${before-prevSum}회`,
+      why:`이번 달 칸을 뺀 차감 합이 ${before}회인데 전월 파일에서는 ${prevSum}회였습니다. 지난달 차감을 나중에 고쳤을 수 있어 전월 급여가 덜 또는 더 지급됐는지 확인해 주세요.`,
+      calc:`차감이력  전월 ${fmtH(p.hist)} (합 ${prevSum})\n금월 ${fmtH(m.hist)} (이번 달 ${d0} 빼면 ${before})`});
+    if(p.K!==m.K) add({rule:"S5",cat:"s",lv:"warn",t:m.t,m:m.name,sub,what:"등록세션이 전월과 다름",diff:`${m.K-p.K>0?"+":""}${m.K-p.K}회`,
+      why:"같은 회원의 등록세션이 전월과 다릅니다. 추가 등록·서비스 세션이면 예외로 등록해 주세요.",calc:`등록세션  전월 ${p.K}  →  금월 ${m.K}`});
+    if(r0(p.pay)!==r0(m.pay)) add({rule:"S6",cat:"s",lv:"warn",t:m.t,m:m.name,sub,what:"결제금액이 전월과 다름",diff:`${(r0(m.pay)-r0(p.pay)).toLocaleString("ko-KR")}원`,
+      why:"같은 회원의 결제금액 합계(J열)가 전월과 다릅니다.",calc:`결제금액 합계  전월 ${r0(p.pay).toLocaleString("ko-KR")}  →  금월 ${r0(m.pay).toLocaleString("ko-KR")}`});
+    if(moved&&d===0) add({rule:"S8",cat:"s",lv:"warn",t:m.t,m:m.name,sub:`${p.t}에게서 이관`,what:"다른 트레이너에게서 넘어온 회원",diff:`${m.N}회`,
+      why:`전월엔 ${p.t} 트레이너 목록에 있던 회원입니다. 횟수는 맞습니다. 양도·인계가 맞는지 확인 후 예외로 등록해 주세요.`,calc:`전월 ${p.t}  남은 ${p.N}\n금월 ${m.t}  남은 ${m.N} · 이번달 차감 ${d0}`});
+  }
+  // S7
+  for(const p of pm){ if(used.has(p)||p.N<=0) continue;
+    add({rule:"S7",cat:"s",lv:"warn",t:cur.trainers.includes(p.t)?p.t:(cur.trainers[0]||p.t),m:p.name,sub:`${p.date} 등록`,what:"남은세션이 있는데 목록에서 사라짐",diff:`${p.N}회`,
+      why:`전월 남은 ${p.N}회였는데 금월 어느 트레이너 목록에도 없습니다. 양도, 환불, 퇴사 인계인지 확인해 주세요.${cur.trainers.includes(p.t)?"":` (전월 담당 ${p.t})`}`,
+      calc:`전월 ${p.t} ${p.kind==="new"?"이번달 등록":"잔여"} 회원 내역  남은세션 ${p.N}\n금월  없음`}); }
+  // L1~L5
+  const lrows={};
+  for(const t of cur.trainers){
+    const L=cur.ledger[t], s=cur.sheets[t];
+    if(!s){ add({rule:"L0",cat:"l",lv:"err",t,m:"",sub:"",what:"급여대장에는 있는데 개인시트가 없음",diff:"시트 없음",why:`급여대장(PT)에 ${t} 트레이너가 있는데 같은 이름의 개인시트를 찾지 못했습니다.`,calc:`급여대장(PT) ${L.row}행  ${t}\n개인시트  없음`}); continue; }
+    const chk=[["L1","신규세션",L.H,sum(s.newM.map(m=>m.hist[0]||0)),"H열","이번달 등록 회원 차감 합","회"],
+               ["L2","잔여세션",L.I,sum(s.remM.map(m=>m.hist.length?m.hist[m.hist.length-1]:0)),"I열","잔여 회원 이번달 차감 합","회"],
+               ["L3","총수업",L.L,s.total,"L열","총수업개수","회"],
+               ["L4","총매출",L.P,s.sales,"P열","총매출","원"],
+               ["L5","정산금액",L.AC,s.pay,"AC열","정산금액","원"]];
+    lrows[t]={};
+    for(const [rule,label,a,b,ac,bc,u] of chk){
+      const ok=b!==null&&r0(a)===r0(b); lrows[t][rule]=ok;
+      if(!ok){const dd=b===null?null:r0(a)-r0(b);
+        add({rule,cat:"l",lv:"err",t,m:"",sub:"",what:`${label}이 개인시트와 다름`,diff:dd===null?"값 없음":`${dd.toLocaleString("ko-KR")}${u}`,
+        why:b===null?`개인시트에서 '${bc}' 값을 찾지 못했습니다.`:`급여대장(PT) ${label}과 개인시트 ${bc}가 맞지 않습니다.`,
+        calc:`급여대장(PT) ${ac}   ${r0(a).toLocaleString("ko-KR")}\n개인시트 ${bc}   ${b===null?"(없음)":r0(b).toLocaleString("ko-KR")}`});}
+    }
+  }
+  for(const n of cur.extraSheets) add({rule:"L0",cat:"l",lv:"err",t:n,m:"",sub:"",what:"개인시트는 있는데 급여대장에 없음",diff:"대장 없음",why:`${n} 개인시트에 회원이 있는데 급여대장(PT)에 이 트레이너가 없습니다.`,calc:`개인시트  ${n}\n급여대장(PT)  없음`});
+  // A1~A4
+  const STAFF="알바·직원";
+  for(const s of cur.staff){
+    if(s.K>0&&!s.J) add({rule:"A1",cat:"a",lv:"err",t:STAFF,m:s.name,sub:s.job,what:"근무시간은 있는데 시급이 비어 있음",diff:"시급 없음",
+      why:`총 근무시간 ${s.K}시간이 입력됐는데 통상시급이 ${s.J===0?"0":"비어 있어"} 지급액이 ${s.R.toLocaleString("ko-KR")}원으로 계산됩니다.`,
+      calc:`급여대장(직원) ${s.row}행 ${s.name}\n총근무시간 ${s.K}  ·  통상시급 ${s.J||"(빈칸/0)"}  ·  지급액 ${s.R.toLocaleString("ko-KR")}`});
+    if(s.acct&&s.jumin){const o=prev.staff.find(p=>p.name!==s.name&&p.acct===s.acct&&p.jumin===s.jumin);
+      if(o) add({rule:"A2",cat:"a",lv:"err",t:STAFF,m:s.name,sub:s.job,what:"주민번호·계좌가 전월 다른 사람과 같음",diff:"개인정보",
+        why:`주민번호와 계좌가 전월 근무자 '${o.name}'과 똑같고 이름만 다릅니다. 신규 입사자 이름만 바꾸고 개인정보를 고치지 않은 것으로 보입니다.`,
+        calc:`전월 ${o.name}  ·  ${mask.jumin(o.jumin)}  ·  ${mask.acct(o.bank,o.acct)}\n금월 ${s.name}  ·  ${mask.jumin(s.jumin)}  ·  ${mask.acct(s.bank,s.acct)}`});}
+    const rc=cur.roster[s.name], rp=prev.roster[s.name];
+    if(rc&&rp){const worked=rc.days.filter(Boolean).length;
+      const same=rc.days.every((d,i)=>{const p=rp.days[i];if(!d&&!p)return true;if(!d||!p)return false;return d.f===p.f&&d.t===p.t&&d.h===p.h});
+      if(worked&&same) add({rule:"A3",cat:"a",lv:"err",t:STAFF,m:s.name,sub:s.job,what:"근무 날짜·시간이 전월과 모두 같음",diff:"전월 복사",
+        why:"금월 근무 날짜와 시간이 전월과 하나도 다르지 않습니다. 당월 근무시간을 업데이트하지 않은 것으로 보입니다. 총 근무시간만 같은 건 정상이라 날짜·시간이 모두 같을 때만 띄웁니다.",
+        calc:`전월  ${rp.days.filter(Boolean).length}일 근무 · ${rp.total}시간\n금월  ${worked}일 근무 · ${rc.total}시간\n날짜별 근무시간 ${worked}건 모두 동일`});}
+    if(rc&&r0(rc.total*100)!==r0(s.K*100)) add({rule:"A4",cat:"a",lv:"err",t:STAFF,m:s.name,sub:s.job,what:"총근무시간이 근무표 합계와 다름",diff:`${+(s.K-rc.total).toFixed(2)}시간`,
+      why:`급여대장(직원) 총근무시간이 아르바이트 근무표 합계와 다릅니다. 근무표 기준이면 지급액이 ${(r0(rc.total*s.J)).toLocaleString("ko-KR")}원입니다.`,
+      calc:`급여대장(직원) K열  ${s.K}시간\n아르바이트 근무표 합계  ${rc.total}시간\n지급액  ${s.R.toLocaleString("ko-KR")}원 (근무표 기준 ${(r0(rc.total*s.J)).toLocaleString("ko-KR")}원)`});
+  }
+  if(sales) salesChecks(cur,sales,add);
+  // S9 사본 경고
+  const tot=x=>sum(Object.values(x.ledger).map(l=>l.L)), nnew=x=>x.members.filter(m=>m.kind==="new").length;
+  const sameCopy=tot(prev)===tot(cur)&&nnew(prev)===nnew(cur);
+  const staffHours=sum(cur.staff.map(s=>s.K));
+  const flagged=new Set(items.filter(i=>i.m&&i.cat==="s").map(i=>i.t+"|"+i.m));
+  const pass=cm.filter(m=>!flagged.has(m.t+"|"+m.name)).length;
+  return {items,sess,lrows,sameCopy,trainers:cur.trainers,staffN:cur.staff.length,staffHours,pass,memberN:cm.length,warnings:[...prev.warnings.map(w=>"전월: "+w),...cur.warnings.map(w=>"금월: "+w),...(sales?sales.warnings:[])],salesTotal:sales?sales.ptTotal:null,ledgerTotal:sum(Object.values(cur.ledger).map(l=>l.P))};
+}
+
+const api={openWorkbook,readPayroll,runChecks,monthOf,readSales,gridsFromWorkbook};
+if(typeof module!=="undefined") module.exports=api; else root.RecheckEngine=api;
+})(typeof window!=="undefined"?window:globalThis);
+
+</script>
+<script>
+const E=window.RecheckEngine;
+const CAT={s:"세션 정합성",l:"급여대장 대조",m:"매출 대조",a:"알바 급여"};
+const STAFF="알바·직원";
+const VIEWS={guide:"사용 안내",upload:"파일 올리기",result:"결과 확인",exc:"예외 기록",hist:"지난 리체크"};
+const LV={err:"오류",warn:"확인필요",ok:"처리 완료"};
+// Google 로그인 설정: Google Cloud에서 만든 OAuth 클라이언트 ID를 넣으면 '구글시트에서 바로 읽기'가 켜집니다.
+const GOOGLE_CLIENT_ID="";
+const FILES={prev:null,cur:null,sales:null,gs:null};
+let R=null, I=[], T=[], ROUNDS=[], MONTH="", NEXT=1;
+const S={up:"idle",lastFixed:0,view:"upload",cat:null,lv:null,tr:null,q:"",peek:null,form:false,re:{prev:null,cur:null}};
+const $=s=>document.querySelector(s);
+const won=n=>Math.round(n).toLocaleString("ko-KR");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const cur=i=>i.done?"ok":i.lv;
+const rank={err:0,warn:1,ok:2};
+const tag=(lv,txt)=>`<span class="tag ${lv}">${txt??LV[lv]}</span>`;
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
+let EXC=store.get("recheck_exc",[]), HIST=store.get("recheck_hist",{});
+const nowStr=()=>{const d=new Date(),p=x=>String(x).padStart(2,"0");return `${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
+const today=()=>{const d=new Date(),p=x=>String(x).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`};
+
+function trainerLv(n){const xs=I.filter(i=>i.t===n&&!i.done);return xs.some(i=>i.lv==="err")?"err":xs.length?"warn":"ok"}
+function counts(){const o=I.filter(i=>!i.done);return {e:o.filter(i=>i.lv==="err").length,w:o.filter(i=>i.lv==="warn").length,r:I.filter(i=>i.done).length}}
+
+function show(v){S.view=v;
+  document.querySelectorAll("section[data-v]").forEach(s=>s.hidden=s.dataset.v!==v);
+  document.querySelectorAll(".nitem[data-view]").forEach(b=>{if(b.dataset.view===v)b.setAttribute("aria-current","page");else b.removeAttribute("aria-current")});
+  $("#crView").textContent=VIEWS[v];
+  $("#nav").classList.remove("on");if(!S.peek)$("#scrim").classList.remove("on");
+  renderChrome();
+  if(v==="result")renderResult(); if(v==="exc")renderExc(); if(v==="hist")renderHist();
+  window.scrollTo({top:0});
+}
+function renderChrome(){
+  const {e,w}=counts();
+  $("#monthLbl").textContent=MONTH;
+  $("#topStatus").innerHTML=!R?tag("gray","검사 전"):(e?tag("err","진행 중"):tag("ok","리체크 완료"));
+  $("#navCnt").innerHTML=!R?"":e?`<span class="tag err plain">${e}</span>`:w?`<span class="tag warn plain">${w}</span>`:"";
+  $("#excCnt").textContent=EXC.length||"";
+}
+
+/* ---------- 파일 읽기 / 검사 ---------- */
+function setFile(slot,f){if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{if(slot==="sales")S.salesSrc="xl";else S.swapped=false;FILES[slot]={name:f.name,buf:new Uint8Array(rd.result),month:E.monthOf(f.name)};
+    document.getElementById("fn-"+slot).textContent=f.name;
+    const mo=FILES[slot].month;
+    document.getElementById("fm-"+slot).innerHTML=`${(f.size/1024).toFixed(0)}KB · <span class="tag ok">선택됨</span>${slot!=="sales"?(mo?` <span class="muted">파일명 기준 ${mo}월</span>`:` <span class="tag warn">월 확인</span> <span class="muted">파일명에 'N월'이 없어요</span>`):""}`;
+    const m=document.getElementById("mo-"+slot); if(m&&mo) m.textContent=mo+"월";
+  };
+  rd.readAsArrayBuffer(f);
+}
+const ERRMSG={WRONG_PASSWORD:"엑셀 암호가 맞지 않아요.",NEED_PASSWORD:"암호가 걸린 파일이에요. 엑셀 암호를 입력해 주세요.",NOT_EXCEL:"엑셀 파일(.xlsx)이 아니에요."};
+function openFile(slot,pw){
+  try{return E.readPayroll(E.openWorkbook(FILES[slot].buf,pw))}
+  catch(e){const label=slot==="prev"?"전월":"금월";throw new Error(`${label} 파일(${FILES[slot].name}): ${ERRMSG[e.message]||"읽는 중 문제가 생겼어요. "+e.message}`)}
+}
+function loadSales(pw){
+  if(S.salesSrc==="gs"&&FILES.gs){const x=E.readSales(FILES.gs.grids);x.src=`구글시트 '${FILES.gs.title}'`;return x}
+  if(S.salesSrc==="xl"&&FILES.sales){let wb;
+    try{wb=E.openWorkbook(FILES.sales.buf,pw)}catch(e){throw new Error(`매출시트(${FILES.sales.name}): ${ERRMSG[e.message]||"읽는 중 문제가 생겼어요. "+e.message}`)}
+    const x=E.readSales(E.gridsFromWorkbook(wb));x.src=`엑셀 '${FILES.sales.name}'`;return x}
+  return null;
+}
+function buildItems(res){
+  return res.items.map(x=>{const ex=EXC.find(e=>e.key===x.key);return {...x,id:NEXT++,reason:ex?ex.reason:null,done:ex?"예외 등록됨: "+ex.reason:null}});
+}
+function startRun(){
+  const msg=$("#runMsg"), pw=$("#pw").value;
+  if(!FILES.prev||!FILES.cur){msg.innerHTML=tag("err","파일 필요")+" 전월·금월 급여정산 파일을 모두 골라 주세요.";return}
+  if($("#remember").checked) store.set("recheck_pw",pw); else store.del("recheck_pw");
+  msg.innerHTML=`<span class="spin"></span> 파일 여는 중…`;
+  setTimeout(()=>{
+    try{
+      let swapped=S.swapped||false;
+      if(FILES.prev.month&&FILES.cur.month){const a=FILES.prev.month,b=FILES.cur.month;if((a>b&&!(a===12&&b===1))||(a===1&&b===12)){[FILES.prev,FILES.cur]=[FILES.cur,FILES.prev];swapped=true;S.swapped=true}}
+      const P=openFile("prev",pw), C=openFile("cur",pw);
+      const SL=loadSales(pw);
+      R=E.runChecks(P,C,{sales:SL}); R.swapped=swapped; R.sales=SL?SL.src:null;
+      MONTH=FILES.cur.month?`${FILES.cur.month}월`:"";
+      T=R.trainers; NEXT=1; I=buildItems(R);
+      ROUNDS=[{n:1,at:nowStr()}]; S.up="idle"; S.tr=null; S.cat=null; S.lv=null; S.q="";
+      saveHist(); msg.textContent=""; show("result");
+    }catch(e){msg.innerHTML=tag("err","확인 필요")+" "+esc(e.message)}
+  },30);
+}
+function rerun(){
+  const pw=$("#pw").value||store.get("recheck_pw","");
+  for(const k of ["prev","cur"]) if(S.re[k]) FILES[k]=S.re[k];
+  S.up="run";renderRebar();
+  setTimeout(()=>{
+    try{
+      const P=openFile("prev",pw), C=openFile("cur",pw);
+      const SL=loadSales(pw);
+      const res=E.runChecks(P,C,{sales:SL}); res.sales=SL?SL.src:null;
+      const n=ROUNDS.length+1; ROUNDS.push({n,at:nowStr()});
+      const nk=new Map(res.items.map(x=>[x.key,x]));
+      let fixed=0;
+      for(const i of I){ if(i.done) continue;
+        const x=nk.get(i.key);
+        if(!x){i.done=`${n}차 검사(수정 파일)에서 맞는 것을 확인했습니다.`;i.round=n;fixed++}
+        else Object.assign(i,{what:x.what,diff:x.diff,why:x.why,calc:x.calc,lv:x.lv});
+      }
+      const have=new Set(I.map(i=>i.key));
+      for(const x of buildItems({items:res.items.filter(x=>!have.has(x.key))})) {x.isNew=n;I.push(x)}
+      R={...res,swapped:R.swapped}; T=R.trainers; S.lastFixed=fixed; S.up="done"; S.re={prev:null,cur:null};
+      saveHist(); renderResult(); renderChrome(); if(S.peek) renderPeek();
+    }catch(e){S.up="pick";renderRebar();$("#rebar").insertAdjacentHTML("beforeend",`<div class="result">${tag("err","확인 필요")} ${esc(e.message)}</div>`)}
+  },30);
+}
+function saveHist(){ if(!MONTH) return; const {e,w}=counts();
+  HIST[MONTH]={e,w,exc:I.filter(i=>i.reason).length,at:today()}; store.set("recheck_hist",HIST); }
+
+/* ---------- 결과 화면 ---------- */
+function renderResult(){
+  $("#resEmpty").hidden=!!R; $("#resBody").hidden=!R; if(!R) return;
+  $("#resTitle").textContent=`${MONTH} 리체크 결과`;
+  const warn=[];
+  if(R.sameCopy) warn.push(["bad","⚠️","<b>전월과 금월 파일이 같은 파일일 수 있어요.</b> 총수업과 신규회원 수가 똑같습니다. 금월 파일을 다시 확인해 주세요."]);
+  if(R.swapped) warn.push(["","🔁","파일명의 월을 보고 전월·금월 파일을 서로 바꿔서 검사했어요."]);
+  for(const w of R.warnings) warn.push(["bad","⚠️",esc(w)]);
+  if(!R.sales) warn.push(["","💡","매출시트를 넣지 않아 <b>매출 대조</b>는 건너뛰었어요."]);
+  else warn.push(["","📊",`매출시트: ${esc(R.sales)} · PT 매출 합계 ${won(R.salesTotal)}원`]);
+  $("#resWarn").innerHTML=warn.map(([c,i,t])=>`<div class="callout ${c}"><span class="ci" aria-hidden="true">${i}</span><div>${t}</div></div>`).join("");
+  const open=I.filter(i=>!i.done);const {e,w,r}=counts();
+  $("#kpis").innerHTML=[["err",e,"고쳐야 할 항목"],["warn",w,"사유 확인 후 예외 등록"],["ok",r,"수정 파일·예외로 처리된 항목"],["pass",R.pass,`대조 통과한 회원 (전체 ${R.memberN}명)`]]
+    .map(([k,n,d])=>k==="pass"?`<div class="kpi" style="cursor:default">${tag("gray","정상")}<span class="n num">${n}</span><span class="d">${d}</span></div>`
+      :`<button class="kpi" data-lv="${k}" aria-pressed="${S.lv===k}">${tag(k)}<span class="n num">${n}</span><span class="d">${d}</span></button>`).join("");
+  const tcount=n=>{const o=open.filter(i=>i.t===n),e=o.filter(i=>i.lv==="err").length,w=o.length-e;return e?tag("err",e):w?tag("warn",w):tag("ok","정상")};
+  const extra=[...new Set(I.map(i=>i.t))].filter(t=>t!==STAFF&&!T.includes(t));
+  const order=[...T,...extra].sort((a,b)=>rank[trainerLv(a)]-rank[trainerLv(b)]);
+  $("#ttabs").innerHTML=`<button class="ttab" role="tab" data-tr="" aria-selected="${!S.tr}">전체 <span class="tag gray plain">${open.length}</span></button>`
+    +order.map(n=>`<button class="ttab" role="tab" data-tr="${esc(n)}" aria-selected="${S.tr===n}">${esc(n)} ${tcount(n)}</button>`).join("")
+    +`<span class="tsep" aria-hidden="true"></span><button class="ttab staff" role="tab" data-tr="${STAFF}" aria-selected="${S.tr===STAFF}">${STAFF} ${tcount(STAFF)}</button>`;
+  if(S.tr===STAFF){const st=new Set(open.filter(i=>i.t===STAFF).map(i=>i.m));
+    $("#tsum").innerHTML=`<span>근무자 <b>${R.staffN}</b>명</span><span>총 근무시간 <b>${+R.staffHours.toFixed(2)}</b>시간</span><span>${st.size?`안 맞는 근무자 <b class="bad">${st.size}</b>명`:"<b style=\"color:var(--grn)\">모두 정상</b>"}</span>`}
+  else if(S.tr&&R.sess[S.tr]){const {p,nw,r,g,c,led,d}=R.sess[S.tr];
+    $("#tsum").innerHTML=`<span>세션 공식 <b>${p}</b> + <b>${nw}</b> − <b>${r}</b> + <b>${g}</b> = <b>${c}</b></span><span>급여대장 총수업 <b>${led}</b></span><span>${d?`차이 <b class="bad">${d>0?"+":""}${d}</b>`:"<b style=\"color:var(--grn)\">일치</b>"}</span>`}
+  else $("#tsum").innerHTML="";
+  const cats=S.tr===STAFF?[[null,"전체"],["a","알바 급여"]]:[[null,"전체"],["s","세션 정합성"],["l","급여대장 대조"],...(R.sales||I.some(i=>i.cat==="m")?[["m","매출 대조"]]:[]),...(S.tr?[]:[["a","알바 급여"]])];
+  $("#toolbar").innerHTML=`<span class="lbl">검증 단계</span>`+cats
+    .map(([k,l])=>`<button class="pill" data-cat="${k??""}" aria-pressed="${S.cat===k}">${l} <small>${open.filter(i=>(!k||i.cat===k)&&(!S.tr||i.t===S.tr)).length}</small></button>`).join("")
+    +`<input class="search" id="q" type="search" placeholder="${S.tr===STAFF?"근무자":"회원"} 이름 검색" value="${esc(S.q)}" aria-label="이름 검색">`;
+  renderRebar(); renderRows();
+  $("#refbody").innerHTML=refTables();
+}
+function renderRebar(){
+  const {e,w}=counts();const last=ROUNDS[ROUNDS.length-1];
+  let h=`<div class="top1"><div class="txt"><b>엑셀에서 한꺼번에 고친 뒤 수정 파일을 다시 올려주세요</b><span class="muted">다시 검사해서 고쳐진 항목은 자동으로 <span class="tag ok">처리 완료</span>로 바뀝니다.</span></div>
+    ${S.up==="idle"||S.up==="done"?`<button class="btn primary" data-up="open">수정 파일 다시 올리기</button>`:""}</div>
+    <div class="rounds">${ROUNDS.map(r=>`<span class="r${r===last?" cur":""}">${r.n}차 검사 · ${r.at}</span>`).join(`<span aria-hidden="true">→</span>`)}<span>남은 항목 오류 ${e} · 확인필요 ${w}</span></div>`;
+  const row=(k,label)=>{const nf=S.re[k],of=FILES[k];return `<div class="fl"><span class="k">${label}</span><span class="fn${nf?"":" muted"}">${esc(nf?nf.name:of.name)}</span><span>${nf?tag("ok","새 파일"):'<span class="tag gray plain">그대로</span>'} <label class="btn sm pick" for="re-${k}">바꾸기</label><input type="file" id="re-${k}" accept=".xlsx,.xls" hidden data-re="${k}"></span></div>`};
+  if(S.up==="pick") h+=`<div class="drop">${row("cur","금월 급여정산")}${row("prev","전월 급여정산")}
+      <div class="row"><button class="btn primary" data-up="run"${S.re.cur||S.re.prev?"":" disabled"}>다시 검사</button><button class="btn ghost" data-up="cancel">취소</button><span class="muted" style="font-size:12.5px">고친 파일만 바꿔 넣으면 됩니다</span></div></div>`;
+  if(S.up==="run") h+=`<div class="result"><span class="spin"></span> ${ROUNDS.length+1}차 검사 중…</div>`;
+  if(S.up==="done") h+=`<div class="result">${S.lastFixed?`<span class="tag ok">${S.lastFixed}건 처리 완료</span> ${last.n}차 검사에서 고쳐진 것을 확인했습니다.`:`<span class="tag gray plain">변경 없음</span> 새로 고쳐진 항목이 없습니다.`} ${e+w?`남은 ${e+w}건은 표에서 확인하세요.`:"남은 항목이 없습니다."}</div>`;
+  $("#rebar").innerHTML=h;
+}
+function renderRows(){
+  const all=!S.tr;
+  const match=i=>(!S.cat||i.cat===S.cat)&&(!S.lv||cur(i)===S.lv)&&(!S.q||(i.m||"").includes(S.q))&&(all||i.t===S.tr);
+  const ord=[...T,STAFF];
+  const xs=I.filter(match).sort((a,b)=>rank[cur(a)]-rank[cur(b)]||ord.indexOf(a.t)-ord.indexOf(b.t)||a.id-b.id);
+  const cols=all?`<col style="width:11%"><col style="width:15%"><col style="width:11%"><col style="width:13%"><col><col style="width:12%"><col style="width:110px"><col style="width:118px">`
+                :`<col style="width:17%"><col style="width:12%"><col style="width:14%"><col><col style="width:13%"><col style="width:110px"><col style="width:118px">`;
+  const head=`<tr>${all?"<th>구분</th>":""}<th>${all?"회원·근무자":S.tr===STAFF?"근무자":"회원"}</th><th>상태</th><th>검증 단계</th><th>내용</th><th class="r">차이</th><th>처리 결과</th><th></th></tr>`;
+  const n=all?8:7;
+  const body=xs.length?xs.map(i=>{const lv=cur(i);return `<tr class="it${i.done?" done":""}" data-id="${i.id}" tabindex="0">
+      ${all?`<td class="tr">${esc(i.t)}</td>`:""}
+      <td class="mn">${i.m?esc(i.m):`<span class="none">회원 무관</span>`}${i.sub?`<small>${esc(i.sub)}</small>`:""}</td>
+      <td>${i.reason?tag("ok","예외 등록"):tag(lv)}</td><td><span class="tag gray plain">${CAT[i.cat]}</span></td>
+      <td title="${esc(i.what)}">${esc(i.what)}</td><td class="r num">${esc(i.diff)}</td>
+      <td class="muted" style="font-size:13px">${i.reason?"예외 사유 등록":i.done?`${i.round}차 검사 확인`:i.isNew?`${i.isNew}차에 새로 생김`:"미처리"}</td><td><button class="btn sm detail" data-detail="${i.id}" aria-label="${esc(i.m||i.what)} 상세보기">상세보기 <span aria-hidden="true">›</span></button></td></tr>`}).join("")
+    :`<tr><td colspan="${n}" class="empty">${S.tr&&trainerLv(S.tr)==="ok"&&!S.cat&&!S.lv&&!S.q?(S.tr===STAFF?"알바·직원은 안 맞는 항목이 없습니다.":`${esc(S.tr)} 트레이너는 안 맞는 회원이 없습니다.`):"조건에 맞는 항목이 없습니다."}</td></tr>`;
+  $("#mainTbl").innerHTML=`<colgroup>${cols}</colgroup><thead>${head}</thead><tbody>${body}</tbody>`;
+}
+function refTables(){
+  const tr=T.filter(t=>R.sess[t]);
+  const lr=T.filter(t=>R.lrows[t]);
+  return `<p class="cap">① 전월남은(신규+잔여) + 금월 신규등록세션 − 금월남은 + SPT/GX = 금월 총 수업수</p><div class="wrapx"><table><thead><tr><th>트레이너</th><th>전월남은</th><th>+ 신규등록</th><th>− 금월남은</th><th>+ SPT/GX</th><th>= 계산</th><th>급여대장 총수업</th><th>차이</th></tr></thead><tbody>
+  ${tr.map(n=>{const {p,nw,r,g,c,led,d}=R.sess[n];return `<tr><td>${esc(n)}</td>${[p,nw,r,g,c,led].map(v=>`<td class="num">${v}</td>`).join("")}<td class="num ${d?"bad":"good"}">${d?(d>0?"+":"")+d:"0"}</td></tr>`}).join("")}</tbody></table></div>
+  <p class="cap">② 급여대장(PT)과 트레이너 개인시트 비교</p><div class="wrapx"><table><thead><tr><th>트레이너</th><th>신규세션</th><th>잔여세션</th><th>총수업</th><th>총매출</th><th>정산금액</th></tr></thead><tbody>
+  ${lr.map(n=>`<tr><td>${esc(n)}</td>${["L1","L2","L3","L4","L5"].map(k=>R.lrows[n][k]).map(v=>`<td class="${v?"good":"bad"}">${v?"일치":"불일치"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+  <p class="cap">③ 매출시트 '매출 총계' PT 합계와 급여대장 총매출 비교</p>${R.sales?`<div class="wrapx"><table><thead><tr><th>구분</th><th>매출시트</th><th>급여대장</th><th>차이</th></tr></thead><tbody>
+  <tr><td>PT 총매출</td><td class="num">${won(R.salesTotal)}</td><td class="num">${won(R.ledgerTotal)}</td><td class="num ${R.salesTotal-R.ledgerTotal?"bad":"good"}">${won(R.salesTotal-R.ledgerTotal)}</td></tr></tbody></table></div>`:`<p class="muted" style="font-size:13.5px">매출시트를 넣지 않아 건너뛰었어요.</p>`}`;
+}
+
+/* ---------- 상세 창 ---------- */
+function openPeek(id){S.peek=id;S.form=false;renderPeek();$("#peek").classList.add("on");$("#scrim").classList.add("on");$("#peek").setAttribute("aria-hidden","false");$("#peekClose").focus()}
+function closePeek(){S.peek=null;$("#peek").classList.remove("on");$("#scrim").classList.remove("on");$("#peek").setAttribute("aria-hidden","true")}
+function renderPeek(){
+  const i=I.find(x=>x.id===S.peek);if(!i)return;const lv=cur(i);
+  $("#peekCrumb").textContent=`${i.t} / ${CAT[i.cat]}`;
+  let h=`<h2>${i.m?esc(i.m):esc(i.what)}</h2><div class="kv">
+    <span class="k">상태</span><span>${i.reason?tag("ok","예외 등록"):tag(lv)}</span>
+    <span class="k">${i.t===STAFF?"구분":"트레이너"}</span><span>${esc(i.t)}</span>
+    <span class="k">검증 단계</span><span><span class="tag gray plain">${CAT[i.cat]}</span></span>
+    ${i.sub?`<span class="k">참고</span><span>${esc(i.sub)}</span>`:""}
+    <span class="k">차이</span><span class="num"><b>${esc(i.diff)}</b></span></div>
+    <div class="sect">무엇이 안 맞나요</div><p>${esc(i.what)}. ${esc(i.why)}</p>
+    <div class="sect">계산식</div><div class="code">${esc(i.calc)}</div>`;
+  if(i.reason) h+=`<div class="callout" style="margin-top:16px"><span class="ci" aria-hidden="true">✅</span><div>${esc(i.done)}</div></div><button class="btn ghost" data-act="undo">예외 취소</button>`;
+  else if(i.done) h+=`<div class="callout" style="margin-top:16px"><span class="ci" aria-hidden="true">✅</span><div>${esc(i.done)}</div></div>`;
+  else if(i.lv==="warn"){
+    if(S.form) h+=`<form id="excForm" style="margin-top:18px"><label for="reason" class="muted">예외 사유</label>
+    <textarea id="reason" placeholder="예: 김도윤 → 정유진 양도, 받는 쪽 8회 반영 확인 (원장 확인)" required style="margin-top:6px"></textarea>
+    <div class="row" style="margin-top:8px"><button class="btn primary" type="submit">예외로 등록</button><button class="btn ghost" type="button" data-act="cancel">취소</button></div>
+    <p class="muted" style="font-size:13px;margin-top:8px">등록한 예외는 '예외 기록'에 쌓이고 다음 리체크에서 다시 묻지 않습니다.</p></form>`;
+    else h+=`<div class="row" style="margin-top:18px"><button class="btn" data-act="exc">예외로 등록</button></div>`;
+  }
+  $("#peekBody").innerHTML=h;
+}
+function renderExc(){
+  $("#excBody").innerHTML=EXC.length?[...EXC].reverse().map(r=>`<tr><td>${esc(r.t)}</td><td class="mn" style="font-weight:600">${esc(r.m||"-")}</td><td><span class="tag gray plain">${esc(CAT[r.cat]||r.cat)}</span></td><td title="${esc(r.reason)}">${esc(r.reason)}</td><td class="muted">${esc(r.month)}</td></tr>`).join(""):`<tr><td colspan="5" class="empty">등록된 예외가 없습니다.</td></tr>`;
+}
+function renderHist(){
+  const ks=Object.keys(HIST).sort((a,b)=>parseInt(b)-parseInt(a));
+  $("#histBody").innerHTML=ks.length?ks.map(k=>{const h=HIST[k];return `<tr><td style="font-weight:600">${esc(k)}</td><td>${h.e?tag("err","진행 중"):tag("ok","완료")}</td><td class="r num">${h.e}</td><td class="r num">${h.w}</td><td>${h.exc?h.exc+"건":"없음"}</td><td class="muted">${h.e?"-":esc(h.at)}</td></tr>`}).join(""):`<tr><td colspan="6" class="empty">아직 기록이 없습니다.</td></tr>`;
+}
+
+/* ---------- 이벤트 ---------- */
+document.addEventListener("click",e=>{
+  const b=e.target.closest("button,tr.it"); if(!b)return;
+  if(b.id==="startBtn")return startRun();
+  if(b.dataset.detail)return openPeek(+b.dataset.detail);
+  if(b.matches("tr.it"))return openPeek(+b.dataset.id);
+  if(b.dataset.up){const u=b.dataset.up;if(u==="open"){S.up="pick";renderRebar()}else if(u==="cancel"){S.up="idle";S.re={prev:null,cur:null};renderRebar()}else if(u==="run")rerun();return}
+  if(b.dataset.view)return show(b.dataset.view);
+  if(b.dataset.goto)return show(b.dataset.goto);
+  if(b.id==="menuBtn"){$("#nav").classList.add("on");$("#scrim").classList.add("on");return}
+  if(b.id==="peekClose")return closePeek();
+  if(b.dataset.lv){S.lv=S.lv===b.dataset.lv?null:b.dataset.lv;return renderResult()}
+  if(b.dataset.cat!==undefined){S.cat=b.dataset.cat||null;return renderResult()}
+  if(b.dataset.tr!==undefined){S.tr=b.dataset.tr||null;S.cat=null;return renderResult()}
+  const it=I.find(x=>x.id===S.peek);const a=b.dataset.act;if(!it||!a)return;
+  if(a==="exc"){S.form=true;renderPeek();$("#reason")?.focus()}
+  if(a==="cancel"){S.form=false;renderPeek()}
+  if(a==="undo"){EXC=EXC.filter(x=>x.key!==it.key);store.set("recheck_exc",EXC);it.done=null;it.reason=null;saveHist();renderPeek();renderResult();renderChrome()}
+});
+document.addEventListener("input",e=>{if(e.target.id==="q"){S.q=e.target.value.trim();renderRows()}});
+$("#scrim").addEventListener("click",()=>{closePeek();$("#nav").classList.remove("on")});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){closePeek();$("#nav").classList.remove("on");$("#scrim").classList.remove("on")}
+  if(e.key==="Enter"&&e.target.matches("tr.it"))openPeek(+e.target.dataset.id);
+});
+document.addEventListener("submit",e=>{e.preventDefault();const it=I.find(x=>x.id===S.peek);const r=$("#reason").value.trim();if(!it||!r)return;
+  it.reason=r;it.done="예외 등록됨: "+r;S.form=false;
+  EXC=EXC.filter(x=>x.key!==it.key);EXC.push({key:it.key,t:it.t,m:it.m,cat:it.cat,reason:r,month:MONTH});store.set("recheck_exc",EXC);
+  saveHist();renderPeek();renderResult();renderChrome()});
+document.addEventListener("change",e=>{
+  if(e.target.dataset.slot)setFile(e.target.dataset.slot,e.target.files[0]);
+  if(e.target.dataset.re){const k=e.target.dataset.re,f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{S.re[k]={name:f.name,buf:new Uint8Array(rd.result),month:E.monthOf(f.name)};renderRebar()};rd.readAsArrayBuffer(f)}
+});
+document.querySelectorAll(".up").forEach(u=>{const inp=u.querySelector("input[type=file]");if(!inp)return;
+  u.addEventListener("dragover",e=>{e.preventDefault();u.classList.add("drag")});
+  u.addEventListener("dragleave",()=>u.classList.remove("drag"));
+  u.addEventListener("drop",e=>{e.preventDefault();u.classList.remove("drag");setFile(inp.dataset.slot,e.dataTransfer.files[0])});});
+document.addEventListener("click",e=>{const b=e.target.closest("[data-src]");if(!b)return;const v=b.dataset.src;
+  document.querySelectorAll(".seg2 [data-src]").forEach(x=>x.setAttribute("aria-selected",x.dataset.src===v));
+  document.getElementById("src-gs").hidden=v!=="gs";document.getElementById("src-xl").hidden=v!=="xl";});
+document.addEventListener("click",e=>{if(e.target.id==="gsLoad")gsLoad()});
+function loadScript(src){return new Promise((ok,no)=>{const x=document.createElement("script");x.src=src;x.onload=ok;x.onerror=()=>no(new Error("load"));document.head.appendChild(x)})}
+async function gsLoad(){
+  const u=$("#gsUrl").value.trim(), m=$("#gsMsg");
+  const id=(u.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/)||[])[1];
+  if(!id){m.innerHTML=`${tag("err","링크 확인")} 구글시트 주소(docs.google.com/spreadsheets/d/…)를 붙여 넣어 주세요.`;return}
+  if(!GOOGLE_CLIENT_ID){m.innerHTML=`${tag("gray","준비 중")} Google 로그인은 Google Cloud 앱 등록(클라이언트 ID) 후 켜져요. 지금은 [엑셀 파일 올리기]를 써 주세요.`;return}
+  try{
+    m.innerHTML=`<span class="spin"></span> Google 로그인 창을 여는 중…`;
+    if(!(window.google&&google.accounts&&google.accounts.oauth2)) await loadScript("https://accounts.google.com/gsi/client");
+    const token=await new Promise((ok,no)=>{const c=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:"https://www.googleapis.com/auth/spreadsheets.readonly",
+      callback:r=>r&&r.access_token?ok(r.access_token):no(new Error(r&&r.error||"denied")),error_callback:er=>no(new Error(er&&er.type||"popup"))});c.requestAccessToken()});
+    m.innerHTML=`<span class="spin"></span> 매출시트 읽는 중…`;
+    const H={headers:{Authorization:"Bearer "+token}}, base="https://sheets.googleapis.com/v4/spreadsheets/"+id;
+    const meta=await fetch(base+"?fields=properties.title,sheets.properties.title",H);
+    if(!meta.ok) throw new Error(meta.status===403||meta.status===404?"NO_ACCESS":"HTTP "+meta.status);
+    const mj=await meta.json(); const tabs=mj.sheets.map(x=>x.properties.title).filter(t=>/^\d{1,2}일$/.test(t));
+    if(!tabs.length) throw new Error("NO_DAYS");
+    const q=tabs.map(t=>"ranges="+encodeURIComponent(`'${t}'!A1:AE300`)).join("&");
+    const vr=await fetch(`${base}/values:batchGet?${q}&valueRenderOption=FORMATTED_VALUE`,H);
+    if(!vr.ok) throw new Error("HTTP "+vr.status);
+    const vj=await vr.json(); const grids={};
+    vj.valueRanges.forEach((r,k)=>{grids[tabs[k]]=r.values||[]});
+    FILES.gs={id,title:mj.properties.title,grids}; S.salesSrc="gs";
+    m.innerHTML=`${tag("ok","불러옴")} ${esc(mj.properties.title)} · 일별 탭 ${tabs.length}개`;
+  }catch(er){const k=er.message;
+    m.innerHTML=tag("err","확인 필요")+" "+(k==="NO_ACCESS"?"로그인한 Google 계정에 이 시트를 볼 권한이 없어요.":k==="NO_DAYS"?"이 시트에서 '1일'~'31일' 탭을 찾지 못했어요.":k==="denied"||k==="access_denied"||k==="popup_closed"?"Google 로그인이 취소됐어요.":k==="load"?"Google 로그인 도구를 불러오지 못했어요. 이 페이지가 등록된 웹 주소에서 열렸는지 확인해 주세요.":"시트를 읽지 못했어요. ("+esc(k)+")");}
+}
+(function init(){
+  const pw=store.get("recheck_pw",""); if(pw) $("#pw").value=pw;
+  if(!E||!window.XLSX||!window.CryptoJS){$("#runMsg").innerHTML=tag("err","오류")+" 엑셀 읽기 도구를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.";}
+  let seen=false;try{seen=localStorage.getItem("recheck_guide_seen")==="1";localStorage.setItem("recheck_guide_seen","1")}catch(e){}
+  show(seen?"upload":"guide");
+})();
+
+</script>
