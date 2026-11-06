@@ -127,7 +127,7 @@ h3{font-size:16px;font-weight:600;margin:22px 0 8px}
 .tsep{flex:none;width:1px;background:var(--line);margin:10px 6px}
 .tsum{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;padding:12px 2px 0;font-size:13px;color:var(--muted)}
 .tsum b{color:var(--fg);font-weight:600}
-.tsum b.bad{color:var(--red)}
+.tsum b.bad{color:var(--red)} .tsum b.warn{color:var(--yel)}
 .tsum:empty{display:none}
 .tbl td.tr{font-weight:500}
 /* 수정 파일 다시 올리기 */
@@ -180,7 +180,7 @@ h3{font-size:16px;font-weight:600;margin:22px 0 8px}
 .ref th,.ref td{padding:7px 10px;border:1px solid var(--line2);text-align:right;white-space:nowrap}
 .ref th{font-weight:500;color:var(--muted);background:var(--panel)}
 .ref th:first-child,.ref td:first-child{text-align:left}
-.ref .bad{color:var(--red);font-weight:600} .ref .good{color:var(--grn)}
+.ref .bad{color:var(--red);font-weight:600} .ref .warn{color:var(--yel);font-weight:600} .ref .good{color:var(--grn)}
 .ref .wrapx{overflow-x:auto;margin:6px 0 12px}
 .ref .cap{font-size:13px;color:var(--muted)}
 
@@ -782,7 +782,7 @@ function runChecks(prev,cur,opts={}){
   for(const s1 of items.filter(i=>i.rule==="S1")){
     const s7=items.filter(i=>i.rule==="S7"&&i._pt===s1.t), ex=sum(s7.map(i=>i._n)), d=sess[s1.t].d;
     if(!s7.length) continue;
-    if(ex===d){ items.splice(items.indexOf(s1),1);
+    if(ex===d){ items.splice(items.indexOf(s1),1); sess[s1.t].gone=s7.map(i=>`${i.m} ${i._n}회`).join(", ");
       for(const i of s7){ i.why+=` 이 회원 때문에 ${s1.t} 트레이너 세션 공식(전월남은 + 신규 − 금월남은 + SPT·GX)이 급여대장 총수업과 ${i._n}회 차이 납니다.`;
         i.calc+=`\n\n트레이너 세션 공식\n${s1.calc}`; } }
     else s1.calc+=`\n목록에서 사라진 회원 남은세션 ${ex}회 포함 (${s7.map(i=>i.m).join(", ")})`;
@@ -980,7 +980,7 @@ function renderResult(){
   if(S.tr===STAFF){const st=new Set(open.filter(i=>i.t===STAFF).map(i=>i.m));
     $("#tsum").innerHTML=`<span>근무자 <b>${R.staffN}</b>명</span><span>총 근무시간 <b>${+R.staffHours.toFixed(2)}</b>시간</span><span>${st.size?`안 맞는 근무자 <b class="bad">${st.size}</b>명`:"<b style=\"color:var(--grn)\">모두 정상</b>"}</span>`}
   else if(S.tr&&R.sess[S.tr]){const {p,nw,r,g,c,led,d}=R.sess[S.tr];
-    $("#tsum").innerHTML=`<span>세션 공식 <b>${p}</b> + <b>${nw}</b> − <b>${r}</b> + <b>${g}</b> = <b>${c}</b></span><span>급여대장 총수업 <b>${led}</b></span><span>${d?`차이 <b class="bad">${d>0?"+":""}${d}</b>`:"<b style=\"color:var(--grn)\">일치</b>"}</span>`}
+    $("#tsum").innerHTML=`<span>세션 공식 <b>${p}</b> + <b>${nw}</b> − <b>${r}</b> + <b>${g}</b> = <b>${c}</b></span><span>급여대장 총수업 <b>${led}</b></span><span>${d?`차이 <b class="${R.sess[S.tr].gone?"warn":"bad"}">${d>0?"+":""}${d}</b>${R.sess[S.tr].gone?` (목록에서 사라진 회원: ${esc(R.sess[S.tr].gone)})`:""}`:"<b style=\"color:var(--grn)\">일치</b>"}</span>`}
   else $("#tsum").innerHTML="";
   const cats=S.tr===STAFF?[[null,"전체"],["a","알바 급여"]]:[[null,"전체"],["s","세션 정합성"],["l","급여대장 대조"],...(R.sales||I.some(i=>i.cat==="m")?[["m","매출 대조"]]:[]),...(S.tr?[]:[["a","알바 급여"]])];
   $("#toolbar").innerHTML=`<span class="lbl">검증 단계</span>`+cats
@@ -1023,7 +1023,7 @@ function refTables(){
   const tr=T.filter(t=>R.sess[t]);
   const lr=T.filter(t=>R.lrows[t]);
   return `<p class="cap">① 전월남은(신규+잔여) + 금월 신규등록세션 − 금월남은 + SPT/GX = 금월 총 수업수</p><div class="wrapx"><table><thead><tr><th>트레이너</th><th>전월남은</th><th>+ 신규등록</th><th>− 금월남은</th><th>+ SPT/GX</th><th>= 계산</th><th>급여대장 총수업</th><th>차이</th></tr></thead><tbody>
-  ${tr.map(n=>{const {p,nw,r,g,c,led,d}=R.sess[n];return `<tr><td>${esc(n)}</td>${[p,nw,r,g,c,led].map(v=>`<td class="num">${v}</td>`).join("")}<td class="num ${d?"bad":"good"}">${d?(d>0?"+":"")+d:"0"}</td></tr>`}).join("")}</tbody></table></div>
+  ${tr.map(n=>{const {p,nw,r,g,c,led,d,gone}=R.sess[n];return `<tr><td>${esc(n)}</td>${[p,nw,r,g,c,led].map(v=>`<td class="num">${v}</td>`).join("")}<td class="num ${d?(gone?"warn":"bad"):"good"}" title="${gone?esc("목록에서 사라진 회원: "+gone):""}">${d?(d>0?"+":"")+d:"0"}</td></tr>`}).join("")}</tbody></table></div>
   <p class="cap">② 급여대장(PT)과 트레이너 개인시트 비교</p><div class="wrapx"><table><thead><tr><th>트레이너</th><th>신규세션</th><th>잔여세션</th><th>총수업</th><th>총매출</th><th>정산금액</th></tr></thead><tbody>
   ${lr.map(n=>`<tr><td>${esc(n)}</td>${["L1","L2","L3","L4","L5"].map(k=>R.lrows[n][k]).map(v=>`<td class="${v?"good":"bad"}">${v?"일치":"불일치"}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
   <p class="cap">③ 매출시트 '매출 총계' PT 합계와 급여대장 총매출 비교</p>${R.sales?`<div class="wrapx"><table><thead><tr><th>구분</th><th>매출시트</th><th>급여대장</th><th>차이</th></tr></thead><tbody>
