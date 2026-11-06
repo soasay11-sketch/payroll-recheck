@@ -64,6 +64,11 @@ p{margin:4px 0}
 .nitem .cnt{margin-left:auto}
 .nitem:disabled{opacity:.55;cursor:default}
 .nitem:disabled:hover{background:none}
+.gbox{border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--bg);color:var(--muted);font-size:12.5px;line-height:1.45}
+.gbox b{color:var(--fg);font-weight:600;word-break:break-all}
+.gbox .btn{width:100%;justify-content:center;margin-top:6px}
+.gbox .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--grn);margin-right:5px;vertical-align:1px}
+.gbox .dot.off{background:var(--faint)} .gbox .dot.busy{background:var(--yel)} .gbox .dot.err{background:var(--red)}
 .navfoot{margin-top:auto;padding:12px 8px 0;font-size:12px;color:var(--faint);display:flex;flex-direction:column;gap:6px}
 
 /* 상단 바 + 본문 */
@@ -280,7 +285,7 @@ h3{font-size:16px;font-weight:600;margin:22px 0 8px}
     <div class="ngrp">기록</div>
     <button class="nitem" data-view="exc"><svg><use href="#i-flag"/></svg>예외 기록<span class="cnt muted" id="excCnt"></span></button>
     <button class="nitem" data-view="hist"><svg><use href="#i-clock"/></svg>지난 리체크</button>
-    <div class="navfoot"><span class="tag warn plain" style="align-self:flex-start">1차 확정 · 테스트 버전</span>엑셀은 이 브라우저 안에서만 열립니다.</div>
+    <div class="navfoot"><div class="gbox" id="gbox"></div><span class="tag warn plain" style="align-self:flex-start">1차 확정 · 테스트 버전</span>엑셀은 이 브라우저 안에서만 열립니다. 로그인하면 기록이 내 구글 드라이브에 저장됩니다.</div>
   </aside>
 
   <div class="main">
@@ -867,8 +872,8 @@ const DB={_d:null,open(){if(this._d)return this._d;this._d=new Promise((ok,no)=>
   async get(k){const d=await this.open();return new Promise(ok=>{try{const q=d.transaction("kv").objectStore("kv").get(k);q.onsuccess=()=>ok(q.result||null);q.onerror=()=>ok(null)}catch(e){ok(null)}})},
   async put(k,v){const d=await this.open();return new Promise(ok=>{try{const t=d.transaction("kv","readwrite");t.objectStore("kv").put(v,k);t.oncomplete=()=>ok(true);t.onerror=()=>ok(false)}catch(e){ok(false)}})},
   async del(k){const d=await this.open();return new Promise(ok=>{try{const t=d.transaction("kv","readwrite");t.objectStore("kv").delete(k);t.oncomplete=()=>ok(true);t.onerror=()=>ok(false)}catch(e){ok(false)}})}};
-function saveSession(){ if(!R) return; S.savedAt=nowStr();
-  DB.put("last",{files:{prev:FILES.prev,cur:FILES.cur,sales:FILES.sales,gs:FILES.gs},salesSrc:S.salesSrc,swapped:S.swapped,gsUrl:$("#gsUrl").value,R,I,T,ROUNDS,MONTH,NEXT,savedAt:S.savedAt}).catch(()=>{}); }
+function saveSession(){ if(!R) return; S.savedAt=nowStr(); S.savedMs=Date.now(); setTimeout(()=>gPush(),0);
+  DB.put("last",{files:{prev:FILES.prev,cur:FILES.cur,sales:FILES.sales,gs:FILES.gs},salesSrc:S.salesSrc,swapped:S.swapped,gsUrl:$("#gsUrl").value,R,I,T,ROUNDS,MONTH,NEXT,savedAt:S.savedAt,savedMs:S.savedMs}).catch(()=>{}); }
 function fillUpload(){
   for(const k of ["prev","cur","sales"]){const f=FILES[k];if(!f)continue;
     document.getElementById("fn-"+k).textContent=f.name;
@@ -879,6 +884,82 @@ function fillUpload(){
   document.getElementById("src-gs").hidden=v!=="gs";document.getElementById("src-xl").hidden=v!=="xl";
   $("#resetRow").hidden=false;
 }
+/* ---------- 구글 로그인 · 어느 PC에서나 기록 이어보기 ---------- */
+const G_SCOPES="https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.appdata";
+const G={token:null,exp:0,email:"",on:false,state:"off",at:"",ids:{},timer:null,err:""};
+const b64=u8=>{let s="";for(let i=0;i<u8.length;i+=32768)s+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));return btoa(s)};
+const unb64=t=>{const s=atob(t),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u};
+const packF=f=>f&&f.buf?{...f,buf:b64(f.buf)}:f, unpackF=f=>f&&typeof f.buf==="string"?{...f,buf:unb64(f.buf)}:f;
+async function gToken(){
+  if(G.token&&Date.now()<G.exp-60000) return G.token;
+  if(!GOOGLE_CLIENT_ID) throw new Error("NO_CLIENT");
+  if(!(window.google&&google.accounts&&google.accounts.oauth2)) await loadScript("https://accounts.google.com/gsi/client");
+  const r=await new Promise((ok,no)=>{const c=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:G_SCOPES,
+    callback:r=>r&&r.access_token?ok(r):no(new Error(r&&r.error||"denied")),error_callback:er=>no(new Error(er&&er.type||"popup"))});c.requestAccessToken()});
+  G.token=r.access_token; G.exp=Date.now()+(+r.expires_in||3600)*1000;
+  G.drive=!(google.accounts.oauth2.hasGrantedAllScopes)||google.accounts.oauth2.hasGrantedAllScopes(r,"https://www.googleapis.com/auth/drive.appdata");
+  return G.token;
+}
+async function gFetch(url,opt={}){const t=await gToken();const r=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+t}});
+  if(r.status===401){G.token=null;const t2=await gToken();return fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+t2}})}return r}
+async function dId(name){ if(G.ids[name]) return G.ids[name];
+  const r=await gFetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&q=${encodeURIComponent(`name='${name}'`)}`);
+  if(!r.ok) throw new Error("DRIVE_"+r.status); const f=(await r.json()).files[0]; if(f) G.ids[name]=f.id; return f?f.id:null }
+async function dRead(name){const id=await dId(name); if(!id) return null;
+  const r=await gFetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`); if(!r.ok) throw new Error("DRIVE_"+r.status); return r.json()}
+async function dWrite(name,obj){const id=await dId(name), b="rc"+Math.random().toString(36).slice(2);
+  const body=`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(id?{}:{name,parents:["appDataFolder"]})}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(obj)}\r\n--${b}--`;
+  const r=await gFetch(id?`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=multipart&fields=id`:`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`,
+    {method:id?"PATCH":"POST",headers:{"Content-Type":"multipart/related; boundary="+b},body});
+  if(!r.ok) throw new Error("DRIVE_"+r.status); const j=await r.json(); if(j.id) G.ids[name]=j.id }
+function metaAt(){return store.get("recheck_meta_at",0)} function touchMeta(){store.set("recheck_meta_at",Date.now())}
+function sessionObj(){return {files:{prev:packF(FILES.prev),cur:packF(FILES.cur),sales:packF(FILES.sales),gs:FILES.gs},salesSrc:S.salesSrc,swapped:S.swapped,gsUrl:$("#gsUrl").value,R,I,T,ROUNDS,MONTH,NEXT,savedAt:S.savedAt,savedMs:S.savedMs||0}}
+function applySession(x){
+  Object.assign(FILES,{prev:null,cur:null,sales:null,gs:null},x.files||{}); for(const k of ["prev","cur","sales"]) FILES[k]=unpackF(FILES[k]);
+  S.salesSrc=x.salesSrc||"gs"; S.swapped=!!x.swapped; R=x.R; T=x.T||R.trainers; ROUNDS=x.ROUNDS||[]; MONTH=x.MONTH||""; NEXT=x.NEXT||1; S.savedMs=x.savedMs||0;
+  I=x.I.map(i=>{const ex=EXC.find(e=>e.key===i.key); if(ex&&!i.done) return {...i,reason:ex.reason,done:"예외 등록됨: "+ex.reason}; if(!ex&&i.reason) return {...i,reason:null,done:null}; return i});
+  if(x.gsUrl) $("#gsUrl").value=x.gsUrl; S.restored=x.savedAt; fillUpload();
+}
+function reapplyExc(){ I=I.map(i=>{const ex=EXC.find(e=>e.key===i.key); if(ex&&!i.done) return {...i,reason:ex.reason,done:"예외 등록됨: "+ex.reason}; if(!ex&&i.reason) return {...i,reason:null,done:null}; return i}) }
+async function gConnect(){
+  G.state="busy"; G.err=""; renderG();
+  try{
+    await gToken();
+    if(!G.drive){G.state="err";G.err="드라이브 저장 권한이 체크되지 않았어요. 다시 로그인하면서 권한을 허용해 주세요.";G.token=null;renderG();return false}
+    try{const a=await gFetch("https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)");if(a.ok)G.email=(await a.json()).user.emailAddress||""}catch(e){}
+    G.on=true; store.set("recheck_glogin",true);
+    // 기록(예외·지난 리체크): 더 최근 것 사용
+    const m=await dRead("recheck-meta.json");
+    if(m){G.metaMs=m.at||0;
+      if(!metaAt()){const keys=new Set((m.exc||[]).map(e=>e.key)); EXC=[...(m.exc||[]),...EXC.filter(e=>!keys.has(e.key))]; HIST={...HIST,...(m.hist||{})}; store.set("recheck_exc",EXC);store.set("recheck_hist",HIST); if(EXC.length!==(m.exc||[]).length) touchMeta(); else store.set("recheck_meta_at",m.at||Date.now()); reapplyExc()}
+      else if((m.at||0)>metaAt()){EXC=m.exc||[];HIST=m.hist||{};store.set("recheck_exc",EXC);store.set("recheck_hist",HIST);store.set("recheck_meta_at",m.at);reapplyExc()}}
+    // 마지막 검사: 클라우드가 더 최근이고 이 화면에서 새로 고른 파일이 없으면 불러오기
+    const x=await dRead("recheck-last.json");
+    if(x) G.lastMs=x.savedMs||0;
+    if(x&&x.R&&(x.savedMs||0)>(S.savedMs||0)&&!S.touched){applySession(x);S.restoredFrom="drive";await DB.put("last",{...x,files:{prev:FILES.prev,cur:FILES.cur,sales:FILES.sales,gs:FILES.gs}})}
+    await gPush(true);
+    G.state="on"; G.at=nowStr(); renderG(); show(S.view==="upload"&&R&&!S.touched?"result":S.view); return true;
+  }catch(e){G.state=G.on?"err":"off";G.err=e.message==="NO_CLIENT"?"":e.message.startsWith("DRIVE_")?"구글 드라이브에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요. ("+e.message+")":/denied|popup|access_denied/.test(e.message)?"로그인이 취소됐어요.":"연결 중 문제가 생겼어요. ("+e.message+")";renderG();return false}
+}
+async function gPush(now){ if(!G.on) return;
+  clearTimeout(G.timer);
+  const run=async()=>{ try{G.state="busy";renderG();
+      if(!metaAt()) touchMeta();
+      if(metaAt()>(G.metaMs||0)){const at=metaAt(); await dWrite("recheck-meta.json",{exc:EXC,hist:HIST,at}); G.metaMs=at}
+      if(R&&(S.savedMs||0)>(G.lastMs||0)){const ms=S.savedMs; await dWrite("recheck-last.json",sessionObj()); G.lastMs=ms}
+      G.state="on";G.at=nowStr();G.err="";renderG();
+    }catch(e){G.state="err";G.err="구글 드라이브 저장에 실패했어요. ("+e.message+") 이 브라우저에는 저장돼 있어요.";renderG()} };
+  if(now) return run(); G.timer=setTimeout(run,1500);
+}
+function gLogout(){ try{if(G.token&&window.google)google.accounts.oauth2.revoke(G.token,()=>{})}catch(e){}
+  Object.assign(G,{token:null,exp:0,email:"",on:false,state:"off",ids:{},err:""}); store.set("recheck_glogin",false); renderG(); }
+function renderG(){const el=$("#gbox"); if(!el) return;
+  if(!GOOGLE_CLIENT_ID){el.hidden=true;return}
+  if(G.on){el.innerHTML=`<div><span class="dot ${G.state==="busy"?"busy":G.state==="err"?"err":""}"></span>${G.state==="busy"?"저장 중…":G.state==="err"?"저장 실패":"구글 드라이브에 저장됨"}${G.at&&G.state==="on"?` · ${esc(G.at)}`:""}</div>${G.email?`<b>${esc(G.email)}</b>`:""}${G.err?`<div style="color:var(--red);margin-top:4px">${esc(G.err)}</div>`:""}<div style="margin-top:4px"><button type="button" class="linkbtn" id="gOut" style="font-weight:500">로그아웃</button></div>`;return}
+  const again=store.get("recheck_glogin",false);
+  el.innerHTML=`<div><span class="dot ${G.state==="busy"?"busy":"off"}"></span>${G.state==="busy"?"연결 중…":again?"구글 계정 연결이 끊겼어요":"이 브라우저에만 저장 중"}</div><div>${again?"눌러서 다른 PC 기록까지 이어 보세요.":"로그인하면 어느 PC에서나 기록을 이어 봐요."}</div>${G.err?`<div style="color:var(--red);margin-top:4px">${esc(G.err)}</div>`:""}<button type="button" class="btn sm" id="gIn"${G.state==="busy"?" disabled":""}>${again?"구글 기록 불러오기":"Google 로그인"}</button>`;
+}
+document.addEventListener("click",e=>{if(e.target.id==="gIn")gConnect(); if(e.target.id==="gOut")gLogout()});
 async function resetAll(){ if(!confirm("저장된 파일과 검사 결과를 지우고 새로 시작할까요? (예외 기록·지난 리체크는 남아요)")) return; await DB.del("last"); location.reload(); }
 const nowStr=()=>{const d=new Date(),p=x=>String(x).padStart(2,"0");return `${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
 const today=()=>{const d=new Date(),p=x=>String(x).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`};
@@ -906,7 +987,7 @@ function renderChrome(){
 /* ---------- 파일 읽기 / 검사 ---------- */
 function setFile(slot,f){if(!f)return;
   const rd=new FileReader();
-  rd.onload=()=>{if(slot==="sales")S.salesSrc="xl";else S.swapped=false;FILES[slot]={name:f.name,buf:new Uint8Array(rd.result),month:E.monthOf(f.name)};
+  rd.onload=()=>{S.touched=true;if(slot==="sales")S.salesSrc="xl";else S.swapped=false;FILES[slot]={name:f.name,buf:new Uint8Array(rd.result),month:E.monthOf(f.name)};
     document.getElementById("fn-"+slot).textContent=f.name;
     const mo=FILES[slot].month;
     document.getElementById("fm-"+slot).innerHTML=`${(f.size/1024).toFixed(0)}KB · <span class="tag ok">선택됨</span>${slot!=="sales"?(mo?` <span class="muted">파일명 기준 ${mo}월</span>`:` <span class="tag warn">월 확인</span> <span class="muted">파일명에 'N월'이 없어요</span>`):""}`;
@@ -973,7 +1054,7 @@ function rerun(){
   },30);
 }
 function saveHist(){ if(!MONTH) return; const {e,w}=counts();
-  HIST[MONTH]={e,w,exc:I.filter(i=>i.reason).length,at:today()}; store.set("recheck_hist",HIST); saveSession(); }
+  HIST[MONTH]={e,w,exc:I.filter(i=>i.reason).length,at:today()}; store.set("recheck_hist",HIST); touchMeta(); saveSession(); }
 
 /* ---------- 결과 화면 ---------- */
 function renderResult(){
@@ -985,7 +1066,7 @@ function renderResult(){
   for(const w of R.warnings) warn.push(["bad","⚠️",esc(w)]);
   if(!R.sales) warn.push(["","💡","매출시트를 넣지 않아 <b>매출 대조</b>는 건너뛰었어요."]);
   else warn.push(["","📊",`매출시트: ${esc(R.sales)} · PT 매출 합계 ${won(R.salesTotal)}원`]);
-  if(S.restored) warn.unshift(["","💾",`${esc(S.restored)}에 검사한 결과를 이 브라우저에서 다시 불러왔어요. 새 달을 검사하려면 [파일 올리기]에서 파일을 바꿔 주세요.`]);
+  if(S.restored) warn.unshift(["","💾",`${esc(S.restored)}에 검사한 결과를 ${S.restoredFrom==="drive"?"구글 드라이브에서":"이 브라우저에서"} 다시 불러왔어요. 새 달을 검사하려면 [파일 올리기]에서 파일을 바꿔 주세요.`]);
   $("#resWarn").innerHTML=warn.map(([c,i,t])=>`<div class="callout ${c}"><span class="ci" aria-hidden="true">${i}</span><div>${t}</div></div>`).join("");
   const open=I.filter(i=>!i.done);const {e,w,r}=counts();
   $("#kpis").innerHTML=[["err",e,"고쳐야 할 항목"],["warn",w,"사유 확인 후 예외 등록"],["ok",r,"수정 파일·예외로 처리된 항목"],["pass",R.pass,`대조 통과한 회원 (전체 ${R.memberN}명)`]]
@@ -1100,7 +1181,7 @@ document.addEventListener("click",e=>{
   const it=I.find(x=>x.id===S.peek);const a=b.dataset.act;if(!it||!a)return;
   if(a==="exc"){S.form=true;renderPeek();$("#reason")?.focus()}
   if(a==="cancel"){S.form=false;renderPeek()}
-  if(a==="undo"){EXC=EXC.filter(x=>x.key!==it.key);store.set("recheck_exc",EXC);it.done=null;it.reason=null;saveHist();renderPeek();renderResult();renderChrome()}
+  if(a==="undo"){EXC=EXC.filter(x=>x.key!==it.key);store.set("recheck_exc",EXC);touchMeta();it.done=null;it.reason=null;saveHist();renderPeek();renderResult();renderChrome()}
 });
 document.addEventListener("input",e=>{if(e.target.id==="q"){S.q=e.target.value.trim();renderRows()}});
 $("#scrim").addEventListener("click",()=>{closePeek();$("#nav").classList.remove("on")});
@@ -1110,7 +1191,7 @@ document.addEventListener("keydown",e=>{
 });
 document.addEventListener("submit",e=>{e.preventDefault();const it=I.find(x=>x.id===S.peek);const r=$("#reason").value.trim();if(!it||!r)return;
   it.reason=r;it.done="예외 등록됨: "+r;S.form=false;
-  EXC=EXC.filter(x=>x.key!==it.key);EXC.push({key:it.key,t:it.t,m:it.m,cat:it.cat,reason:r,month:MONTH});store.set("recheck_exc",EXC);
+  EXC=EXC.filter(x=>x.key!==it.key);EXC.push({key:it.key,t:it.t,m:it.m,cat:it.cat,reason:r,month:MONTH});store.set("recheck_exc",EXC);touchMeta();
   saveHist();renderPeek();renderResult();renderChrome()});
 document.addEventListener("change",e=>{
   if(e.target.dataset.slot)setFile(e.target.dataset.slot,e.target.files[0]);
@@ -1132,9 +1213,7 @@ async function gsLoad(){
   if(!GOOGLE_CLIENT_ID){m.innerHTML=`${tag("gray","준비 중")} Google 로그인은 Google Cloud 앱 등록(클라이언트 ID) 후 켜져요. 지금은 [엑셀 파일 올리기]를 써 주세요.`;return}
   try{
     m.innerHTML=`<span class="spin"></span> Google 로그인 창을 여는 중…`;
-    if(!(window.google&&google.accounts&&google.accounts.oauth2)) await loadScript("https://accounts.google.com/gsi/client");
-    const token=await new Promise((ok,no)=>{const c=google.accounts.oauth2.initTokenClient({client_id:GOOGLE_CLIENT_ID,scope:"https://www.googleapis.com/auth/spreadsheets.readonly",
-      callback:r=>r&&r.access_token?ok(r.access_token):no(new Error(r&&r.error||"denied")),error_callback:er=>no(new Error(er&&er.type||"popup"))});c.requestAccessToken()});
+    const token=await gToken(); if(!G.on&&G.drive){S.touched=true; gConnect();}
     m.innerHTML=`<span class="spin"></span> 매출시트 읽는 중…`;
     const H={headers:{Authorization:"Bearer "+token}}, base="https://sheets.googleapis.com/v4/spreadsheets/"+id;
     const meta=await fetch(base+"?fields=properties.title,sheets.properties.title",H);
@@ -1147,7 +1226,7 @@ async function gsLoad(){
     const vj=await vr.json(); const grids={};
     vj.valueRanges.forEach((r,k)=>{grids[tabs[k]]=r.values||[]});
     FILES.gs={id,title:mj.properties.title,grids}; S.salesSrc="gs";
-    m.innerHTML=`${tag("ok","불러옴")} ${esc(mj.properties.title)} · 일별 탭 ${tabs.length}개`; const gn=document.getElementById("gsNotice"); if(gn) gn.hidden=true; saveSession();
+    m.innerHTML=`${tag("ok","불러옴")} ${esc(mj.properties.title)} · 일별 탭 ${tabs.length}개`; const gn=document.getElementById("gsNotice"); if(gn) gn.hidden=true; S.touched=true; saveSession();
   }catch(er){const k=er.message;
     m.innerHTML=tag("err","확인 필요")+" "+(k==="NO_ACCESS"?"로그인한 Google 계정에 이 시트를 볼 권한이 없어요.":k==="NO_DAYS"?"이 시트에서 '1일'~'31일' 탭을 찾지 못했어요.":k==="denied"||k==="access_denied"||k==="popup_closed"?"Google 로그인이 취소됐어요.":k==="load"?"Google 로그인 도구를 불러오지 못했어요. 이 페이지가 등록된 웹 주소에서 열렸는지 확인해 주세요.":"시트를 읽지 못했어요. ("+esc(k)+")");}
 }
@@ -1157,10 +1236,8 @@ async function gsLoad(){
   let seen=false;try{seen=localStorage.getItem("recheck_guide_seen")==="1";localStorage.setItem("recheck_guide_seen","1")}catch(e){}
   const go=()=>show(seen?(R?"result":"upload"):"guide");
   DB.get("last").then(x=>{ if(x&&x.R&&x.I){
-      Object.assign(FILES,x.files||{}); S.salesSrc=x.salesSrc||"gs"; S.swapped=!!x.swapped; R=x.R; T=x.T||R.trainers; ROUNDS=x.ROUNDS||[]; MONTH=x.MONTH||""; NEXT=x.NEXT||1;
-      I=x.I.map(i=>{const ex=EXC.find(e=>e.key===i.key); if(ex&&!i.done) return {...i,reason:ex.reason,done:"예외 등록됨: "+ex.reason}; if(!ex&&i.reason) return {...i,reason:null,done:null}; return i});
-      if(x.gsUrl) $("#gsUrl").value=x.gsUrl; S.restored=x.savedAt; fillUpload(); }
-    go(); }).catch(go);
+      applySession(x); }
+    go(); renderG(); }).catch(()=>{go();renderG()});
 })();
 
 </script>
