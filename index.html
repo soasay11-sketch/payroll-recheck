@@ -777,7 +777,16 @@ function runChecks(prev,cur,opts={}){
   for(const p of pm){ if(used.has(p)||p.N<=0) continue;
     add({rule:"S7",cat:"s",lv:"warn",t:cur.trainers.includes(p.t)?p.t:(cur.trainers[0]||p.t),m:p.name,sub:`${p.date} 등록`,what:"남은세션이 있는데 목록에서 사라짐",diff:`${p.N}회`,
       why:`전월 남은 ${p.N}회였는데 금월 어느 트레이너 목록에도 없습니다. 양도, 환불, 퇴사 인계인지 확인해 주세요.${cur.trainers.includes(p.t)?"":` (전월 담당 ${p.t})`}`,
-      calc:`전월 ${p.t} ${p.kind==="new"?"이번달 등록":"잔여"} 회원 내역  남은세션 ${p.N}\n금월  없음`}); }
+      calc:`전월 ${p.t} ${p.kind==="new"?"이번달 등록":"잔여"} 회원 내역  남은세션 ${p.N}\n금월  없음`,_pt:p.t,_n:p.N}); }
+  // S1과 S7 중복 정리: 트레이너 공식 차이가 사라진 회원의 남은세션으로 모두 설명되면 S1은 빼고 회원 항목에 합친다
+  for(const s1 of items.filter(i=>i.rule==="S1")){
+    const s7=items.filter(i=>i.rule==="S7"&&i._pt===s1.t), ex=sum(s7.map(i=>i._n)), d=sess[s1.t].d;
+    if(!s7.length) continue;
+    if(ex===d){ items.splice(items.indexOf(s1),1);
+      for(const i of s7){ i.why+=` 이 회원 때문에 ${s1.t} 트레이너 세션 공식(전월남은 + 신규 − 금월남은 + SPT·GX)이 급여대장 총수업과 ${i._n}회 차이 납니다.`;
+        i.calc+=`\n\n트레이너 세션 공식\n${s1.calc}`; } }
+    else s1.calc+=`\n목록에서 사라진 회원 남은세션 ${ex}회 포함 (${s7.map(i=>i.m).join(", ")})`;
+  }
   // L1~L5
   const lrows={};
   for(const t of cur.trainers){
