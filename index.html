@@ -69,6 +69,15 @@ p{margin:4px 0}
 .gbox .btn{width:100%;justify-content:center;margin-top:6px}
 .gbox .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--grn);margin-right:5px;vertical-align:1px}
 .gbox .dot.off{background:var(--faint)} .gbox .dot.busy{background:var(--yel)} .gbox .dot.err{background:var(--red)}
+.gate{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
+.gate[hidden]{display:none}
+.gcard{width:100%;max-width:400px;border:1px solid var(--line);border-radius:10px;padding:28px 24px;background:var(--panel);text-align:center;box-shadow:var(--shadow)}
+.gcard .glogo{width:40px;height:40px;border-radius:8px;background:var(--fg);color:var(--bg);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:18px}
+.gcard h1{font-size:22px;margin:12px 0 8px}
+.gcard p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 16px}
+.gcard .btn{width:100%;justify-content:center}
+.gcard .small{font-size:12.5px;margin:14px 0 0}
+#gateMsg{font-size:13px;margin-top:10px;min-height:1em}
 .navfoot{margin-top:auto;padding:12px 8px 0;font-size:12px;color:var(--faint);display:flex;flex-direction:column;gap:6px}
 
 /* 상단 바 + 본문 */
@@ -438,6 +447,13 @@ h3{font-size:16px;font-weight:600;margin:22px 0 8px}
 </div>
 
 <div class="scrim" id="scrim"></div>
+<div class="gate" id="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle"><div class="gcard">
+  <div class="glogo" aria-hidden="true">급</div><h1 id="gateTitle">급여정산 리체크</h1>
+  <p>Google 계정으로 로그인해야 사용할 수 있어요.<br>검사 기록과 예외는 로그인한 계정의 구글 드라이브에 저장돼서 어느 PC에서나 이어 볼 수 있어요.</p>
+  <button type="button" class="btn primary" id="gateBtn">Google 계정으로 로그인</button>
+  <div id="gateMsg" class="muted" role="status"></div>
+  <p class="muted small">처음 로그인할 때 '확인되지 않은 앱' 화면이 나오면 [고급] → [이동]을 누르고, 권한 체크는 모두 허용해 주세요.</p>
+</div></div>
 <aside class="peek" id="peek" aria-label="상세" aria-hidden="true">
   <div class="ph"><button class="iconbtn" id="peekClose" aria-label="닫기"><svg width="16" height="16"><use href="#i-close"/></svg></button><span id="peekCrumb"></span></div>
   <div class="pb" id="peekBody"></div>
@@ -898,10 +914,11 @@ async function gToken(){
     callback:r=>r&&r.access_token?ok(r):no(new Error(r&&r.error||"denied")),error_callback:er=>no(new Error(er&&er.type||"popup"))});c.requestAccessToken()});
   G.token=r.access_token; G.exp=Date.now()+(+r.expires_in||3600)*1000;
   G.drive=!(google.accounts.oauth2.hasGrantedAllScopes)||google.accounts.oauth2.hasGrantedAllScopes(r,"https://www.googleapis.com/auth/drive.appdata");
+  store.set("recheck_tok",{t:G.token,exp:G.exp,drive:G.drive});
   return G.token;
 }
 async function gFetch(url,opt={}){const t=await gToken();const r=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+t}});
-  if(r.status===401){G.token=null;const t2=await gToken();return fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+t2}})}return r}
+  if(r.status===401){G.token=null;store.del("recheck_tok");const t2=await gToken();return fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+t2}})}return r}
 async function dId(name){ if(G.ids[name]) return G.ids[name];
   const r=await gFetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&q=${encodeURIComponent(`name='${name}'`)}`);
   if(!r.ok) throw new Error("DRIVE_"+r.status); const f=(await r.json()).files[0]; if(f) G.ids[name]=f.id; return f?f.id:null }
@@ -938,7 +955,7 @@ async function gConnect(){
     if(x) G.lastMs=x.savedMs||0;
     if(x&&x.R&&(x.savedMs||0)>(S.savedMs||0)&&!S.touched){applySession(x);S.restoredFrom="drive";await DB.put("last",{...x,files:{prev:FILES.prev,cur:FILES.cur,sales:FILES.sales,gs:FILES.gs}})}
     await gPush(true);
-    G.state="on"; G.at=nowStr(); renderG(); show(S.view==="upload"&&R&&!S.touched?"result":S.view); return true;
+    G.state="on"; G.at=nowStr(); renderG(); gateOff(); show(S.view==="upload"&&R&&!S.touched?"result":S.view); return true;
   }catch(e){G.state=G.on?"err":"off";G.err=e.message==="NO_CLIENT"?"":e.message.startsWith("DRIVE_")?"구글 드라이브에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요. ("+e.message+")":/denied|popup|access_denied/.test(e.message)?"로그인이 취소됐어요.":"연결 중 문제가 생겼어요. ("+e.message+")";renderG();return false}
 }
 async function gPush(now){ if(!G.on) return;
@@ -952,14 +969,17 @@ async function gPush(now){ if(!G.on) return;
   if(now) return run(); G.timer=setTimeout(run,1500);
 }
 function gLogout(){ try{if(G.token&&window.google)google.accounts.oauth2.revoke(G.token,()=>{})}catch(e){}
-  Object.assign(G,{token:null,exp:0,email:"",on:false,state:"off",ids:{},err:""}); store.set("recheck_glogin",false); renderG(); }
-function renderG(){const el=$("#gbox"); if(!el) return;
+  Object.assign(G,{token:null,exp:0,email:"",on:false,state:"off",ids:{},err:""}); store.set("recheck_glogin",false); store.del("recheck_tok"); renderG(); gateOn(); }
+function gateOn(){ if(!GOOGLE_CLIENT_ID) return; const g=$("#gate"); g.hidden=false; $("#gateMsg").textContent=G.state==="busy"?"로그인 중…":(G.err||""); $("#gateBtn").disabled=G.state==="busy"; }
+function gateOff(){ $("#gate").hidden=true; }
+async function gateLogin(){ G.state="busy"; gateOn(); const ok=await gConnect(); if(!ok){ G.token=null; store.del("recheck_tok"); gateOn(); } }
+function renderG(){ if(!$("#gate").hidden) gateOn(); const el=$("#gbox"); if(!el) return;
   if(!GOOGLE_CLIENT_ID){el.hidden=true;return}
   if(G.on){el.innerHTML=`<div><span class="dot ${G.state==="busy"?"busy":G.state==="err"?"err":""}"></span>${G.state==="busy"?"저장 중…":G.state==="err"?"저장 실패":"구글 드라이브에 저장됨"}${G.at&&G.state==="on"?` · ${esc(G.at)}`:""}</div>${G.email?`<b>${esc(G.email)}</b>`:""}${G.err?`<div style="color:var(--red);margin-top:4px">${esc(G.err)}</div>`:""}<div style="margin-top:4px"><button type="button" class="linkbtn" id="gOut" style="font-weight:500">로그아웃</button></div>`;return}
   const again=store.get("recheck_glogin",false);
   el.innerHTML=`<div><span class="dot ${G.state==="busy"?"busy":"off"}"></span>${G.state==="busy"?"연결 중…":again?"구글 계정 연결이 끊겼어요":"이 브라우저에만 저장 중"}</div><div>${again?"눌러서 다른 PC 기록까지 이어 보세요.":"로그인하면 어느 PC에서나 기록을 이어 봐요."}</div>${G.err?`<div style="color:var(--red);margin-top:4px">${esc(G.err)}</div>`:""}<button type="button" class="btn sm" id="gIn"${G.state==="busy"?" disabled":""}>${again?"구글 기록 불러오기":"Google 로그인"}</button>`;
 }
-document.addEventListener("click",e=>{if(e.target.id==="gIn")gConnect(); if(e.target.id==="gOut")gLogout()});
+document.addEventListener("click",e=>{if(e.target.id==="gIn")gConnect(); if(e.target.id==="gOut")gLogout(); if(e.target.id==="gateBtn")gateLogin()});
 async function resetAll(){ if(!confirm("저장된 파일과 검사 결과를 지우고 새로 시작할까요? (예외 기록·지난 리체크는 남아요)")) return; await DB.del("last"); location.reload(); }
 const nowStr=()=>{const d=new Date(),p=x=>String(x).padStart(2,"0");return `${p(d.getMonth()+1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`};
 const today=()=>{const d=new Date(),p=x=>String(x).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`};
@@ -1237,7 +1257,10 @@ async function gsLoad(){
   const go=()=>show(seen?(R?"result":"upload"):"guide");
   DB.get("last").then(x=>{ if(x&&x.R&&x.I){
       applySession(x); }
-    go(); renderG(); }).catch(()=>{go();renderG()});
+    go(); renderG(); gateInit(); }).catch(()=>{go();renderG();gateInit()});
+  function gateInit(){ if(!GOOGLE_CLIENT_ID){gateOff();return} const tk=store.get("recheck_tok",null);
+    if(tk&&tk.t&&tk.exp>Date.now()+120000){ G.token=tk.t; G.exp=tk.exp; G.drive=tk.drive!==false; gConnect().then(ok=>{ if(!ok){G.token=null;store.del("recheck_tok");gateOn()} }); }
+    else gateOn(); }
 })();
 
 </script>
