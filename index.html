@@ -812,9 +812,12 @@ function runChecks(prev,cur,opts={}){
     const before=sum(m.hist)-d0, prevSum=sum(p.hist);
     const d=p.N-m.N-d0;
     const moved=p.t!==m.t;
-    if(kept&&m.hist.length===p.hist.length&&last>0) add({rule:"S3b",cat:"s",lv:"err",t:m.t,m:m.name,sub,what:"차감이력에 이번 달 칸이 없음",diff:`+${last}회`,
-      why:`차감이력에 이번 달 칸이 추가되지 않아 마지막 칸(지난달 ${last}회)이 이번 달 잔여세션 차감으로 계산됩니다. 이번 달 수업이 없으면 '/00'을, 있으면 이번 달 횟수를 이어서 적어 주세요.`,
+    if(kept&&m.hist.length===p.hist.length&&last>0) add({rule:"S3b",cat:"s",lv:"err",t:m.t,m:m.name,sub,what:"차감이력 미갱신",diff:`+${last}회`,
+      why:`차감이력이 전월과 똑같아서 마지막 칸(${last}회)이 이번 달 급여에 반영됐어요. 이력 갱신이 필요해요. 이번 달 수업이 없으면 '/00'을, 있으면 이번 달 횟수를 이어서 적어 주세요.`,
       calc:`차감이력  전월 ${fmtH(p.hist)}  →  금월 ${fmtH(m.hist)} (변화 없음)\n남은세션  전월 ${p.N}  →  금월 ${m.N}\n급여대장 잔여세션에 들어간 값  ${last}`});
+    if(p.N===0&&d0>0) add({rule:"S9",cat:"s",lv:"err",t:m.t,m:m.name,sub,what:"전월 남은 0회인데 이번 달 수업",diff:`+${d0}회`,
+      why:`전월 파일에서 남은세션이 0회였는데 이번 달 차감 ${d0}회가 들어갔어요. 재등록·추가 등록이면 신규 등록으로 넣어야 하고, 아니면 차감이력을 확인해 주세요.`,
+      calc:`전월 남은 ${p.N}  →  금월 남은 ${m.N}\n이번 달 차감 ${d0}\n차감이력  전월 ${fmtH(p.hist)}  →  금월 ${fmtH(m.hist)}`});
     if(fuzzy) add({rule:"S2",cat:"s",lv:"warn",t:m.t,m:m.name,sub,what:fuzzy==="name"?"회원 이름이 전월과 다름":"등록일이 전월과 다름",diff:fuzzy==="name"?"이름":"등록일",
       why:fuzzy==="name"?`등록일이 같고 이름이 비슷해서 전월 '${p.name}'과 같은 회원으로 보고 검사했습니다. 이름 표기를 맞춰 주세요.`:`이름이 같아서 전월 등록일 '${p.date}'인 회원과 같은 회원으로 보고 검사했습니다. 등록일 표기를 맞춰 주세요.`,
       calc:`전월  ${p.name} · 등록일 ${p.date}\n금월  ${m.name} · 등록일 ${m.date}`});
@@ -831,6 +834,11 @@ function runChecks(prev,cur,opts={}){
     if(moved&&d===0) add({rule:"S8",cat:"s",lv:"warn",t:m.t,m:m.name,sub:`${p.t}에게서 이관`,what:"다른 트레이너에게서 넘어온 회원",diff:`${m.N}회`,
       why:`전월엔 ${p.t} 트레이너 목록에 있던 회원입니다. 횟수는 맞습니다. 양도·인계가 맞는지 확인 후 예외로 등록해 주세요.`,calc:`전월 ${p.t}  남은 ${p.N}\n금월 ${m.t}  남은 ${m.N} · 이번달 차감 ${d0}`});
   }
+  // S10: 차감이력 7칸 이상 (양식 수식이 6칸까지만 더함)
+  for(const m of cm){ if(m.hist.length<7) continue;
+    add({rule:"S10",cat:"s",lv:"err",t:m.t,m:m.name,sub:`${m.date} 등록`,what:"차감이력 7칸 이상",diff:`${m.hist.length}칸`,
+      why:"급여정산 양식의 남은세션 수식은 차감이력 6칸까지만 더해서, 7칸째부터는 남은세션이 틀리게 계산돼요. 앞 칸들을 합쳐서 6칸 이하로 적어 주세요. (예: 04/07/05/03/02/04/06 → 21/02/04/06)",
+      calc:`차감이력  ${fmtH(m.hist)} (${m.hist.length}칸, 합 ${sum(m.hist)})\n등록세션 ${m.K} · 남은세션 ${m.N}`}); }
   // S7
   for(const p of pm){ if(used.has(p)||p.N<=0) continue;
     add({rule:"S7",cat:"s",lv:"warn",t:cur.trainers.includes(p.t)?p.t:(cur.trainers[0]||p.t),m:p.name,sub:`${p.date} 등록`,what:"남은세션이 있는데 목록에서 사라짐",diff:`${p.N}회`,
